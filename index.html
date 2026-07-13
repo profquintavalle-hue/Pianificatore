@@ -252,6 +252,14 @@
   .riga-verifica-inline .mini-label{ display:inline-flex; align-items:center; gap:4px; white-space:nowrap; }
   .riga-verifica-inline .badge-verifica{ color:var(--ambra); font-weight:700; }
   .riga-verifica-inline .data-verifica{ font-weight:600; font-size:0.76rem; white-space:nowrap; }
+  .riga-verifica-inline input[type=date]{ padding:3px 5px; border:1px solid var(--bordo); border-radius:5px; font-size:0.76rem; font-family:inherit; }
+  .riga-verifica-inline .tag-auto{ font-size:0.72rem; color:var(--ambra); background:rgba(184,134,59,0.12); padding:2px 7px; border-radius:10px; white-space:nowrap; }
+  .riga-verifica-inline .link-auto{ font-size:0.72rem; color:var(--teal); background:none; border:none; cursor:pointer; padding:2px 4px; white-space:nowrap; }
+  .riga-verifica-inline .link-auto:hover{ text-decoration:underline; }
+  .riga-verifica-inline .avviso-inline{ font-size:0.72rem; color:var(--ruggine); white-space:nowrap; }
+  .riga-verifica-inline .check-prevista{ font-weight:600; color:var(--inchiostro); }
+  .riga-verifica-inline.non-attiva{ opacity:0.5; }
+  .riga-verifica-inline.non-attiva select, .riga-verifica-inline.non-attiva input[type=number], .riga-verifica-inline.non-attiva input[type=date]{ text-decoration:line-through; }
   .btn-aggiungi-verifica-inline{
     margin-top:2px;
     padding:3px 10px;
@@ -448,7 +456,15 @@ function nuovoPiano(){
 
 function pianoCorrente(){
   const p = stato.piani.find(p => p.id === stato.pianoAttivo) || null;
-  if(p) p.moduli.forEach(m => { if(!Array.isArray(m.verifiche)) m.verifiche = []; }); // migrazione
+  if(p) p.moduli.forEach(m => {
+    if(!Array.isArray(m.verifiche)) m.verifiche = [];
+    m.verifiche.forEach(v => {
+      if(v.attiva === undefined) v.attiva = true;
+      if(v.data === undefined) v.data = null;
+      if(v.qualifica === 'ordinaria') v.qualifica = 'sommativa';
+      // scartoLezioni non è più usato: le date automatiche cadono subito dopo il modulo
+    });
+  });
   return p;
 }
 
@@ -505,21 +521,52 @@ function calcolaLezioniDisponibili(piano){
 
 function etichettaVerifica(v, modulo){
   const tipo = v.tipo === 'orale' ? 'Orale' : 'Scritta';
-  const qualifica = v.qualifica === 'recupero' ? 'di recupero' : 'ordinaria';
+  const qualifica = v.qualifica === 'recupero' ? 'di recupero' : 'sommativa';
   return tipo + ' ' + qualifica + ' — ' + modulo.nome;
 }
 
 // Assegna i moduli in sequenza sulle lezioni disponibili.
-// Le verifiche di ciascun modulo vengono collocate automaticamente subito dopo
-// la fine del modulo (o con lo scarto indicato) e, se "occupano lezioni",
-// riservano quei giorni: i moduli successivi scorrono di conseguenza.
+// Ogni verifica ha una data propria (fissata dall'utente o proposta automaticamente
+// subito dopo il suo modulo). Le verifiche attive che "occupano lezioni" riservano
+// i loro giorni ovunque cadano: i moduli in corso in quel punto scorrono di conseguenza.
 function calcolaPianificazione(piano){
   const lezioni = calcolaLezioniDisponibili(piano);
-  const riservate = {}; // indice lezione -> true (occupata da una verifica)
-  const verifichePianificate = [];
+  const indiceLezione = {}; // iso -> indice
+  lezioni.forEach((iso, i)=> indiceLezione[iso] = i);
+
+  const riservate = {};
+
+  // 1) Riserva PRIMA tutte le lezioni delle verifiche con data FISSATA, attive e occupanti,
+  //    ovunque cadano (anche in mezzo a un modulo successivo).
+  function riservaDaData(iso, durata){
+    const start = indiceLezione[iso];
+    const indici = [];
+    if(start == null){ return { indici, fuori:true }; }
+    let count = 0;
+    for(let i = start; i < lezioni.length && count < durata; i++){
+      indici.push(i); count++;
+    }
+    return { indici, fuori: indici.length < durata };
+  }
+
+  piano.moduli.forEach(m => {
+    (m.verifiche||[]).forEach(v => {
+      const attiva = v.attiva !== false;
+      const occupano = attiva && v.occupaLezioni !== false;
+      if(v.data && occupano){
+        const durata = Math.max(1, Number(v.durataLezioni)||1);
+        riservaDaData(v.data, durata).indici.forEach(i => riservate[i] = true);
+      }
+    });
+  });
+
+  // 2) Passaggio sequenziale: per ogni modulo assegna le lezioni di spiegazione
+  //    (saltando le già riservate), poi colloca subito le sue verifiche a data AUTOMATICA
+  //    riservando quei giorni, così il modulo successivo parte dopo di esse.
   let cursore = 0;
   const righe = [];
   let overflowTotale = 0;
+  const verifichePianificate = [];
 
   piano.moduli.forEach(m => {
     const necessarie = Math.max(1, Number(m.lezioni)||1);
@@ -539,39 +586,49 @@ function calcolaPianificazione(piano){
       dataFine = lezioni[assegnate[assegnate.length-1]];
       ultimoIdx = assegnate[assegnate.length-1];
     } else if(lezioni.length > 0){
-      dataInizio = dataFine = lezioni[lezioni.length-1];
-      ultimoIdx = lezioni.length - 1;
+      dataInizio = dataFine = lezioni[Math.min(cursore, lezioni.length-1)];
+      ultimoIdx = Math.min(cursore, lezioni.length-1);
     } else {
       dataInizio = dataFine = piano.dataInizio;
       ultimoIdx = -1;
     }
-    righe.push({ modulo: m, dataInizio, dataFine, lezioniAssegnate: assegnate.length, lezioniPreviste: necessarie, lezioniVerifica: 0, overflow });
-    const rigaCorrente = righe[righe.length-1];
+    const riga = { modulo: m, dataInizio, dataFine, lezioniAssegnate: assegnate.length, lezioniPreviste: necessarie, lezioniVerifica: 0, overflow };
+    righe.push(riga);
 
+    // verifiche del modulo: prima quelle a data automatica (collocate qui, in ordine),
+    // che spingono in avanti il modulo successivo.
     (m.verifiche||[]).forEach(v => {
+      const attiva = v.attiva !== false;
       const durata = Math.max(1, Number(v.durataLezioni)||1);
-      const scarto = Math.max(1, Number(v.scartoLezioni)||1); // 1 = prima lezione utile dopo il modulo
-      const occupano = v.occupaLezioni !== false;
-      if(occupano) rigaCorrente.lezioniVerifica += durata;
-      const dateV = [];
-      let libereViste = 0;
-      let inCorso = false;
-      for(let i = ultimoIdx + 1; i < lezioni.length && dateV.length < durata; i++){
-        if(riservate[i]) continue;
-        if(!inCorso){
-          libereViste++;
-          if(libereViste === scarto) inCorso = true;
-          else continue;
+      const occupano = attiva && v.occupaLezioni !== false;
+      let indici = [];
+      let fuori = false;
+
+      if(v.data){
+        const r = riservaDaData(v.data, durata);
+        indici = r.indici; fuori = r.fuori;
+      } else {
+        let count = 0;
+        for(let i = ultimoIdx + 1; i < lezioni.length && count < durata; i++){
+          if(riservate[i]) continue;
+          indici.push(i); count++;
+          if(occupano) riservate[i] = true;
         }
-        dateV.push(lezioni[i]);
-        if(occupano) riservate[i] = true;
+        fuori = indici.length < durata;
+        if(indici.length) ultimoIdx = Math.max(ultimoIdx, indici[indici.length-1]);
+        // dopo una verifica automatica, il cursore dei moduli riparte da lì
+        cursore = Math.max(cursore, (indici.length ? indici[indici.length-1] : ultimoIdx) + 1);
       }
+
+      if(occupano) riga.lezioniVerifica += durata;
       verifichePianificate.push({
         verifica: v,
         modulo: m,
         etichetta: etichettaVerifica(v, m),
-        date: dateV,
-        fuoriPeriodo: dateV.length < durata
+        date: indici.map(i => lezioni[i]),
+        attiva,
+        dataAutomatica: !v.data,
+        fuoriPeriodo: fuori
       });
     });
   });
@@ -776,7 +833,7 @@ function esportaCronoProgrammaWord(piano, calcolo){
 
   if((calcolo.verifiche||[]).length > 0){
     const verificheOrdinate = calcolo.verifiche.slice()
-      .filter(pv => pv.date.length > 0)
+      .filter(pv => pv.attiva && pv.date.length > 0)
       .sort((a,b)=> a.date[0].localeCompare(b.date[0]));
     if(verificheOrdinate.length > 0){
       rtf += '\\pard\\par\n';
@@ -874,45 +931,51 @@ function renderTabellaModuli(piano){
     td.colSpan = 6;
     (m.verifiche||[]).forEach((v, j)=>{
       const pianificata = calcolo.verifiche.find(pv => pv.verifica === v);
-      const dateTxt = pianificata && pianificata.date.length
-        ? formattaDataBreve(pianificata.date[0]) + (pianificata.date.length>1 ? ' – ' + formattaDataBreve(pianificata.date[pianificata.date.length-1]) : '')
-        : '—';
+      const dataProposta = pianificata && pianificata.date.length ? pianificata.date[0] : '';
+      const attiva = v.attiva !== false;
       const rigaV = document.createElement('div');
-      rigaV.className = 'riga-verifica-inline';
+      rigaV.className = 'riga-verifica-inline' + (attiva ? '' : ' non-attiva');
       rigaV.innerHTML = `
+        <label class="mini-label check-prevista" title="Se disattivi, la verifica resta nell'elenco ma non occupa lezioni e sparisce da calendario, diagramma e report">
+          <input type="checkbox" data-campo="attiva" ${attiva?'checked':''}> prevista
+        </label>
         <span class="badge-verifica">✎</span>
         <select data-campo="tipo">
           <option value="scritta" ${v.tipo!=='orale'?'selected':''}>Scritta</option>
           <option value="orale" ${v.tipo==='orale'?'selected':''}>Orale</option>
         </select>
         <select data-campo="qualifica">
-          <option value="ordinaria" ${v.qualifica!=='recupero'?'selected':''}>Ordinaria</option>
+          <option value="sommativa" ${v.qualifica!=='recupero'?'selected':''}>Sommativa</option>
           <option value="recupero" ${v.qualifica==='recupero'?'selected':''}>Recupero</option>
         </select>
-        <label class="mini-label" title="Su quante lezioni si estende (per le orali)">lezioni
-          <input type="number" min="1" value="${Math.max(1, Number(v.durataLezioni)||1)}" data-campo="durata">
+        <label class="mini-label" title="Su quante lezioni si svolge: 1 per una scritta, di più per un'orale su più giorni">su
+          <input type="number" min="1" value="${Math.max(1, Number(v.durataLezioni)||1)}" data-campo="durata"> lez.
         </label>
-        <label class="mini-label" title="Dopo quante lezioni dalla fine del modulo (1 = subito dopo)">dopo
-          <input type="number" min="1" value="${Math.max(1, Number(v.scartoLezioni)||1)}" data-campo="scarto">
+        <label class="mini-label" title="Data della verifica. Vuota = automatica (subito dopo il modulo, segue il modulo se slitta). Scegliendo una data la fissi.">data
+          <input type="date" data-campo="data" value="${v.data || ''}" min="${piano.dataInizio}" max="${piano.dataFine}">
         </label>
-        <label class="mini-label" title="Se attivo, il giorno di verifica non fa avanzare il programma">
-          <input type="checkbox" data-campo="occupa" ${v.occupaLezioni!==false?'checked':''}> occupa lezioni
-        </label>
-        <span class="data-verifica" style="color:${pianificata && pianificata.fuoriPeriodo ? 'var(--ruggine)':'var(--ambra)'};">
-          ${dateTxt}${pianificata && pianificata.fuoriPeriodo ? ' ⚠︎ oltre il periodo' : ''}
-        </span>
+        ${v.data
+          ? `<button class="link-auto" data-azione="auto" title="Torna alla data automatica">↺ auto</button>`
+          : `<span class="tag-auto" title="Data proposta automaticamente dopo il modulo">auto: ${dataProposta ? formattaDataBreve(dataProposta) : '—'}</span>`}
+        ${pianificata && pianificata.fuoriPeriodo ? '<span class="avviso-inline">⚠︎ oltre il periodo</span>' : ''}
         <button class="azione-icona elimina" title="Rimuovi verifica">✕</button>
       `;
+      rigaV.querySelector('[data-campo=attiva]').addEventListener('change', e=>{ v.attiva = e.target.checked; salvaDati(); renderTabellaModuli(piano); renderGanttOnly(); });
       rigaV.querySelector('[data-campo=tipo]').addEventListener('change', e=>{
         v.tipo = e.target.value;
         if(v.tipo==='orale' && (!v.durataLezioni || v.durataLezioni < 2)) v.durataLezioni = 3;
         if(v.tipo==='scritta') v.durataLezioni = 1;
         salvaDati(); renderTabellaModuli(piano); renderGanttOnly();
       });
-      rigaV.querySelector('[data-campo=qualifica]').addEventListener('change', e=>{ v.qualifica = e.target.value; salvaDati(); renderTabellaModuli(piano); renderGanttOnly(); });
+      rigaV.querySelector('[data-campo=qualifica]').addEventListener('change', e=>{
+        v.qualifica = e.target.value;
+        if(v.qualifica==='recupero' && v.attiva===undefined) v.attiva = true;
+        salvaDati(); renderTabellaModuli(piano); renderGanttOnly();
+      });
       rigaV.querySelector('[data-campo=durata]').addEventListener('input', e=>{ v.durataLezioni = Math.max(1, parseInt(e.target.value)||1); salvaDati(); renderTabellaModuli(piano); renderGanttOnly(); });
-      rigaV.querySelector('[data-campo=scarto]').addEventListener('input', e=>{ v.scartoLezioni = Math.max(1, parseInt(e.target.value)||1); salvaDati(); renderTabellaModuli(piano); renderGanttOnly(); });
-      rigaV.querySelector('[data-campo=occupa]').addEventListener('change', e=>{ v.occupaLezioni = e.target.checked; salvaDati(); renderTabellaModuli(piano); renderGanttOnly(); });
+      rigaV.querySelector('[data-campo=data]').addEventListener('change', e=>{ v.data = e.target.value || null; salvaDati(); renderTabellaModuli(piano); renderGanttOnly(); });
+      const btnAuto = rigaV.querySelector('[data-azione=auto]');
+      if(btnAuto) btnAuto.addEventListener('click', ()=>{ v.data = null; salvaDati(); renderTabellaModuli(piano); renderGanttOnly(); });
       rigaV.querySelector('.elimina').addEventListener('click', ()=>{ m.verifiche.splice(j,1); salvaDati(); renderTabellaModuli(piano); renderGanttOnly(); });
       td.appendChild(rigaV);
     });
@@ -921,7 +984,7 @@ function renderTabellaModuli(piano){
     btnV.textContent = '+ verifica';
     btnV.title = 'Aggiungi una verifica a questo modulo';
     btnV.addEventListener('click', ()=>{
-      m.verifiche.push({ id: idCasuale(), tipo:'scritta', qualifica:'ordinaria', durataLezioni:1, scartoLezioni:1, occupaLezioni:true });
+      m.verifiche.push({ id: idCasuale(), tipo:'scritta', qualifica:'sommativa', durataLezioni:1, data:null, attiva:true, occupaLezioni:true });
       salvaDati(); renderTabellaModuli(piano); renderGanttOnly();
     });
     td.appendChild(btnV);
@@ -941,7 +1004,7 @@ function renderMiniCalendario(piano, calcolo){
   const saltateMap = {}; const extraMap = {};
   piano.eccezioni.forEach(e=>{ if(e.tipo==='saltata') saltateMap[e.data]=true; if(e.tipo==='extra') extraMap[e.data]=true; });
   const verificheMap = {};
-  (calcolo.verifiche||[]).forEach(pv => pv.date.forEach(iso => { verificheMap[iso] = pv; }));
+  (calcolo.verifiche||[]).forEach(pv => { if(pv.attiva) pv.date.forEach(iso => { verificheMap[iso] = pv; }); });
 
   let cursore = new Date(parseISO(piano.dataInizio).getFullYear(), parseISO(piano.dataInizio).getMonth(), 1);
   const fine = parseISO(piano.dataFine);
@@ -1116,7 +1179,7 @@ function renderGantt(piano, calcolo){
 
   // marcatori delle verifiche (date calcolate: seguono i moduli)
   (calcolo.verifiche||[]).forEach(pv=>{
-    if(!pv.date.length) return;
+    if(!pv.attiva || !pv.date.length) return;
     const dDa = parseISO(pv.date[0]);
     const dA = parseISO(pv.date[pv.date.length-1]);
     if(dA < inizio || dDa > fine) return;
