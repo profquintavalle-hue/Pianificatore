@@ -311,6 +311,26 @@
     transform:translateX(-50%);
     white-space:nowrap;
   }
+  .verifica-marcatore{
+    position:absolute;
+    top:0; bottom:0;
+    background:rgba(184,134,59,0.18);
+    border-left:2px solid var(--ambra);
+    border-right:2px solid var(--ambra);
+    pointer-events:auto;
+  }
+  .verifica-etichetta{
+    position:absolute;
+    bottom:-2px;
+    left:2px;
+    font-size:0.62rem;
+    color:var(--ambra);
+    font-weight:700;
+    white-space:nowrap;
+    background:var(--carta);
+    padding:0 3px;
+    border-radius:3px;
+  }
 
   .avviso{
     margin-top:14px;
@@ -334,6 +354,7 @@
   .giorno-cella.lezione{ background:rgba(31,92,86,0.12); color:var(--teal); font-weight:600; }
   .giorno-cella.saltata{ background:var(--ruggine); color:var(--carta); }
   .giorno-cella.extra{ background:var(--oliva); color:var(--carta); }
+  .giorno-cella.verifica{ background:var(--ambra); color:var(--carta); font-weight:700; cursor:default; }
   .giorno-cella.vuota{ cursor:default; }
   .giorno-cella:not(.vuota):hover{ outline:1px solid var(--ambra); }
   .legenda-cal{ display:flex; gap:14px; font-size:0.72rem; color:var(--inchiostro-tenue); margin-top:10px; flex-wrap:wrap; }
@@ -384,7 +405,8 @@ function nuovoPiano(){
       { id: idCasuale(), nome: 'Modulo 1', lezioni: 4 },
       { id: idCasuale(), nome: 'Modulo 2', lezioni: 4 }
     ],
-    eccezioni: [] // {data, tipo: 'saltata'|'extra', etichetta}
+    eccezioni: [], // {data, tipo: 'saltata'|'extra', etichetta}
+    verifiche: [] // {id, etichetta, tipo:'scritta'|'orale', da, a, occupaLezioni}
   };
   stato.piani.push(p);
   stato.pianoAttivo = p.id;
@@ -393,7 +415,9 @@ function nuovoPiano(){
 }
 
 function pianoCorrente(){
-  return stato.piani.find(p => p.id === stato.pianoAttivo) || null;
+  const p = stato.piani.find(p => p.id === stato.pianoAttivo) || null;
+  if(p && !Array.isArray(p.verifiche)) p.verifiche = []; // migrazione piani salvati prima della funzione verifiche
+  return p;
 }
 
 function eliminaPiano(id, ev){
@@ -424,11 +448,30 @@ function inFestivita(iso, festivita){
   return festivita.some(f => iso >= f.da && iso <= f.a);
 }
 
+function giorniVerifica(piano){
+  // mappa iso -> verifica, per tutti i giorni coperti da una verifica
+  const mappa = {};
+  (piano.verifiche||[]).forEach(v => {
+    if(!v.da) return;
+    let cur = parseISO(v.da);
+    const fine = parseISO(v.a || v.da);
+    let guardia = 0;
+    while(cur <= fine && guardia < 60){
+      mappa[toISO(cur)] = v;
+      cur.setDate(cur.getDate()+1);
+      guardia++;
+    }
+  });
+  return mappa;
+}
+
 // Restituisce l'elenco ordinato di date-lezione (ISO) per un piano,
 // tenendo conto di giorni settimanali, festività e eccezioni (saltate/extra)
 function calcolaLezioniDisponibili(piano){
   const saltate = new Set(piano.eccezioni.filter(e=>e.tipo==='saltata').map(e=>e.data));
   const extra = piano.eccezioni.filter(e=>e.tipo==='extra').map(e=>e.data);
+  const mappaVerifiche = giorniVerifica(piano);
+  const occupataDaVerifica = iso => mappaVerifiche[iso] && mappaVerifiche[iso].occupaLezioni !== false;
   const risultato = [];
   if(piano.dataInizio && piano.dataFine){
     let cursore = parseISO(piano.dataInizio);
@@ -436,13 +479,13 @@ function calcolaLezioniDisponibili(piano){
     while(cursore <= fine){
       const iso = toISO(cursore);
       const gg = giornoSettimanaLunBase(cursore);
-      if(piano.giorni.includes(gg) && !inFestivita(iso, piano.festivita) && !saltate.has(iso)){
+      if(piano.giorni.includes(gg) && !inFestivita(iso, piano.festivita) && !saltate.has(iso) && !occupataDaVerifica(iso)){
         risultato.push(iso);
       }
       cursore.setDate(cursore.getDate()+1);
     }
   }
-  extra.forEach(iso => { if(!risultato.includes(iso)) risultato.push(iso); });
+  extra.forEach(iso => { if(!risultato.includes(iso) && !occupataDaVerifica(iso)) risultato.push(iso); });
   risultato.sort();
   return risultato;
 }
@@ -499,7 +542,7 @@ function escapeHtml(s){
 }
 
 function catturaStatoPannelli(){
-  const ids = ['pannello-impostazioni','pannello-moduli','pannello-eccezioni'];
+  const ids = ['pannello-impostazioni','pannello-moduli','pannello-eccezioni','pannello-verifiche'];
   const stato = {};
   ids.forEach(id=>{
     const el = document.getElementById(id);
@@ -582,21 +625,18 @@ function renderMain(){
         <span><i style="background:rgba(31,92,86,0.12)"></i>lezione regolare</span>
         <span><i style="background:var(--ruggine)"></i>saltata</span>
         <span><i style="background:var(--oliva)"></i>extra / recupero</span>
+        <span><i style="background:var(--ambra)"></i>verifica</span>
       </div>
     </details>
 
-    <div class="pannello gantt-wrap">
-      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;">
-        <h3>Diagramma</h3>
-        <button class="btn-aggiungi" id="btn-esporta-word">⤓ esporta crono programma (RTF — Word/Pages)</button>
-      </div>
-      <div class="gantt-riepilogo">
-        <div><b>${calcolo.righe.filter(r=>!r.overflow).length}</b>/${piano.moduli.length} moduli entro fine periodo</div>
-        ${calcolo.overflowTotale>0 ? `<div style="color:var(--ruggine)"><b>${calcolo.overflowTotale}</b> lezioni mancanti rispetto al piano</div>` : ''}
-      </div>
-      <div class="gantt-scroll"><div class="gantt" id="gantt-area"></div></div>
-      ${calcolo.overflowTotale>0 ? `<div class="avviso">Con il calendario attuale non ci sono abbastanza lezioni per completare tutti i moduli entro il ${formattaDataBreve(piano.dataFine)}. Valuta di allungare il periodo, aggiungere lezioni extra o ridurre le lezioni previste in qualche modulo.</div>` : ''}
-    </div>
+    <details class="pannello" id="pannello-verifiche">
+      <summary>Verifiche</summary>
+      <div class="sotto-intestazione" style="margin-bottom:12px;">Per una verifica scritta indica un solo giorno (stessa data in "da" e "a"); per le orali un intervallo di giorni. Se "occupa lezioni" è attivo, in quei giorni il programma non avanza e i moduli scorrono di conseguenza.</div>
+      <div id="lista-verifiche" class="lista-eccezioni"></div>
+      <button class="btn-aggiungi" id="btn-aggiungi-verifica">+ aggiungi verifica</button>
+    </details>
+
+    <div class="pannello gantt-wrap" id="pannello-diagramma"></div>
   `;
 
   ripristinaStatoPannelli(statoPannelliPrecedente);
@@ -631,10 +671,14 @@ function renderMain(){
     salvaDati(); render();
   });
 
-  renderMiniCalendario(piano, calcolo);
-  renderGantt(piano, calcolo);
+  renderVerifiche(piano);
+  document.getElementById('btn-aggiungi-verifica').addEventListener('click', ()=>{
+    piano.verifiche.push({ id: idCasuale(), etichetta:'Verifica', tipo:'scritta', da: piano.dataInizio, a: piano.dataInizio, occupaLezioni:true });
+    salvaDati(); render();
+  });
 
-  document.getElementById('btn-esporta-word').addEventListener('click', ()=> esportaCronoProgrammaWord(piano, calcolo));
+  renderMiniCalendario(piano, calcolo);
+  renderPannelloDiagramma(piano, calcolo);
 }
 
 // ---------- Esportazione crono programma in RTF (Word, Pages, TextEdit) ----------
@@ -677,6 +721,23 @@ function esportaCronoProgrammaWord(piano, calcolo){
       r.overflow ? 'Lezioni insufficienti nel periodo indicato' : ''
     ]);
   });
+
+  if((piano.verifiche||[]).length > 0){
+    const verificheOrdinate = piano.verifiche.slice().sort((a,b)=> (a.da||'').localeCompare(b.da||''));
+    rtf += '\\pard\\par\n';
+    rtf += '{\\pard\\b\\fs26\\sb240 Calendario verifiche\\par}\n';
+    rtf += '{\\pard\\sa120\\fs18 Le date potranno subire lievi variazioni in base allo svolgimento effettivo del programma.\\par}\n';
+    rtf += rigaTabella(['Verifica','Tipo','Data / periodo',''], true);
+    verificheOrdinate.forEach(v=>{
+      rtf += rigaTabella([
+        v.etichetta,
+        v.tipo === 'orale' ? 'Orale' : 'Scritta',
+        formattaDataBreve(v.da) + (v.a && v.a!==v.da ? ' \\endash ' + formattaDataBreve(v.a) : ''),
+        ''
+      ]);
+    });
+  }
+
   rtf += '\\pard\\par}';
 
   const blob = new Blob([rtf], { type: 'application/rtf' });
@@ -748,6 +809,44 @@ function renderTabellaModuli(piano){
 
 function renderSidebarNoop(){} // placeholder per chiarezza chiamate
 
+function renderVerifiche(piano){
+  const cont = document.getElementById('lista-verifiche');
+  if(!cont) return;
+  cont.innerHTML = '';
+  (piano.verifiche||[]).forEach((v, i)=>{
+    const riga = document.createElement('div');
+    riga.className = 'riga-eccezione';
+    riga.innerHTML = `
+      <input type="text" value="${escapeHtml(v.etichetta)}" data-campo="etichetta" placeholder="Argomento">
+      <select data-campo="tipo" style="padding:6px 8px; border:1px solid var(--bordo); border-radius:6px; font-family:inherit; background:var(--carta); color:var(--inchiostro);">
+        <option value="scritta" ${v.tipo==='scritta'?'selected':''}>Scritta</option>
+        <option value="orale" ${v.tipo==='orale'?'selected':''}>Orale</option>
+      </select>
+      <input type="date" value="${v.da}" data-campo="da">
+      <span>→</span>
+      <input type="date" value="${v.a}" data-campo="a">
+      <label style="display:flex; align-items:center; gap:5px; font-size:0.75rem; color:var(--inchiostro-tenue); white-space:nowrap;">
+        <input type="checkbox" data-campo="occupa" ${v.occupaLezioni!==false?'checked':''}> occupa lezioni
+      </label>
+      <button class="azione-icona elimina" title="Rimuovi">✕</button>
+    `;
+    riga.querySelector('[data-campo=etichetta]').addEventListener('input', e=>{ v.etichetta=e.target.value; salvaDati(); renderGanttOnly(); });
+    riga.querySelector('[data-campo=tipo]').addEventListener('change', e=>{ v.tipo=e.target.value; salvaDati(); renderGanttOnly(); });
+    riga.querySelector('[data-campo=da]').addEventListener('change', e=>{
+      v.da=e.target.value;
+      if(v.tipo==='scritta' || !v.a || v.a < v.da) v.a = v.da;
+      salvaDati(); render();
+    });
+    riga.querySelector('[data-campo=a]').addEventListener('change', e=>{
+      v.a = e.target.value < v.da ? v.da : e.target.value;
+      salvaDati(); render();
+    });
+    riga.querySelector('[data-campo=occupa]').addEventListener('change', e=>{ v.occupaLezioni = e.target.checked; salvaDati(); renderGanttOnly(); renderTabellaModuli(piano); });
+    riga.querySelector('.elimina').addEventListener('click', ()=>{ piano.verifiche.splice(i,1); salvaDati(); render(); });
+    cont.appendChild(riga);
+  });
+}
+
 function renderMiniCalendario(piano, calcolo){
   const cont = document.getElementById('mini-calendario');
   cont.innerHTML = '';
@@ -757,6 +856,7 @@ function renderMiniCalendario(piano, calcolo){
   const lezioniSet = new Set(calcolo.lezioni);
   const saltateMap = {}; const extraMap = {};
   piano.eccezioni.forEach(e=>{ if(e.tipo==='saltata') saltateMap[e.data]=true; if(e.tipo==='extra') extraMap[e.data]=true; });
+  const verificheMap = giorniVerifica(piano);
 
   let cursore = new Date(parseISO(piano.dataInizio).getFullYear(), parseISO(piano.dataInizio).getMonth(), 1);
   const fine = parseISO(piano.dataFine);
@@ -781,14 +881,18 @@ function renderMiniCalendario(piano, calcolo){
       const d = new Date(cursore.getFullYear(), cursore.getMonth(), g);
       const iso = toISO(d);
       const cella = document.createElement('div');
+      const verificaQui = verificheMap[iso];
       let cls = 'giorno-cella';
-      if(saltateMap[iso]) cls += ' saltata';
+      if(verificaQui) cls += ' verifica';
+      else if(saltateMap[iso]) cls += ' saltata';
       else if(extraMap[iso]) cls += ' extra';
       else if(lezioniSet.has(iso)) cls += ' lezione';
       cella.className = cls;
       cella.textContent = g;
-      cella.title = iso;
-      if(iso >= piano.dataInizio && iso <= piano.dataFine){
+      cella.title = verificaQui ? (verificaQui.etichetta + ' (' + verificaQui.tipo + ')') : iso;
+      if(verificaQui){
+        // il giorno di verifica si gestisce dal pannello Verifiche, non dal click sul calendario
+      } else if(iso >= piano.dataInizio && iso <= piano.dataFine){
         cella.addEventListener('click', ()=> toggleGiornoCalendario(piano, iso, lezioniSet.has(iso) || saltateMap[iso] || extraMap[iso], saltateMap[iso], extraMap[iso]));
       } else {
         cella.style.opacity = '0.3';
@@ -826,8 +930,30 @@ function renderGanttOnly(){
   const piano = pianoCorrente();
   if(!piano) return;
   const calcolo = calcolaPianificazione(piano);
-  renderGantt(piano, calcolo);
   renderMiniCalendario(piano, calcolo);
+  renderPannelloDiagramma(piano, calcolo);
+}
+
+// Ricostruisce SEMPRE insieme riepilogo, avviso ed esportazione: qualunque modifica
+// (lezione saltata, vacanza, numero di lezioni di un modulo) passa da qui, così
+// il conteggio "lezioni mancanti" non resta mai disallineato dal resto.
+function renderPannelloDiagramma(piano, calcolo){
+  const cont = document.getElementById('pannello-diagramma');
+  if(!cont) return;
+  cont.innerHTML = `
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;">
+      <h3>Diagramma</h3>
+      <button class="btn-aggiungi" id="btn-esporta-word">⤓ esporta crono programma (RTF — Word/Pages)</button>
+    </div>
+    <div class="gantt-riepilogo">
+      <div><b>${calcolo.righe.filter(r=>!r.overflow).length}</b>/${piano.moduli.length} moduli entro fine periodo</div>
+      ${calcolo.overflowTotale>0 ? `<div style="color:var(--ruggine)"><b>${calcolo.overflowTotale}</b> lezioni mancanti rispetto al piano</div>` : ''}
+    </div>
+    <div class="gantt-scroll"><div class="gantt" id="gantt-area"></div></div>
+    ${calcolo.overflowTotale>0 ? `<div class="avviso">Con il calendario attuale non ci sono abbastanza lezioni per completare tutti i moduli entro il ${formattaDataBreve(piano.dataFine)}. Valuta di allungare il periodo, aggiungere lezioni extra o ridurre le lezioni previste in qualche modulo.</div>` : ''}
+  `;
+  document.getElementById('btn-esporta-word').addEventListener('click', ()=> esportaCronoProgrammaWord(piano, calcolo));
+  renderGantt(piano, calcolo);
 }
 
 function renderGantt(piano, calcolo){
@@ -898,8 +1024,29 @@ function renderGantt(piano, calcolo){
     etichetta.textContent = 'oggi';
     linea.appendChild(etichetta);
     corpoGantt.appendChild(linea);
-    corpoGantt.style.minHeight = (calcolo.righe.length * 40) + 'px';
   }
+
+  // marcatori delle verifiche
+  (piano.verifiche||[]).forEach(v=>{
+    if(!v.da) return;
+    const dDa = parseISO(v.da);
+    const dA = parseISO(v.a || v.da);
+    if(dA < inizio || dDa > fine) return;
+    const leftPerc = Math.max(0, (dDa - inizio)/86400000 / totaleGiorni * 100);
+    const widthPerc = Math.max(0.6, ((dA - dDa)/86400000 + 1) / totaleGiorni * 100);
+    const marcatore = document.createElement('div');
+    marcatore.className = 'verifica-marcatore';
+    marcatore.style.left = leftPerc + '%';
+    marcatore.style.width = widthPerc + '%';
+    marcatore.title = v.etichetta + ' (' + v.tipo + '): ' + formattaDataBreve(v.da) + (v.a && v.a!==v.da ? ' – ' + formattaDataBreve(v.a) : '');
+    const etichettaV = document.createElement('div');
+    etichettaV.className = 'verifica-etichetta';
+    etichettaV.textContent = '✎ ' + v.etichetta;
+    marcatore.appendChild(etichettaV);
+    corpoGantt.appendChild(marcatore);
+  });
+
+  corpoGantt.style.minHeight = (calcolo.righe.length * 40) + 'px';
 
   area.appendChild(corpoGantt);
 }
