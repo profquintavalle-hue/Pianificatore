@@ -1,0 +1,898 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pianificatore Moduli</title>
+<style>
+  :root{
+    --carta: #F7F2E6;
+    --carta-alt: #EFE7D6;
+    --inchiostro: #2B241C;
+    --inchiostro-tenue: #6B5F4E;
+    --bordo: #D9CBAE;
+    --teal: #1F5C56;
+    --teal-chiaro: #3E7C74;
+    --ruggine: #B3492A;
+    --oliva: #7C8A4E;
+    --ambra: #B8863B;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--carta);
+    color:var(--inchiostro);
+    font-family:-apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+    min-height:100vh;
+  }
+  h1,h2,h3{
+    font-family:Georgia, "Iowan Old Style", serif;
+    font-weight:600;
+    margin:0;
+  }
+  .app{
+    display:grid;
+    grid-template-columns:260px 1fr;
+    min-height:100vh;
+  }
+  .sidebar{
+    background:var(--carta-alt);
+    border-right:1px solid var(--bordo);
+    padding:24px 16px;
+    display:flex;
+    flex-direction:column;
+    gap:6px;
+  }
+  .sidebar h1{
+    font-size:1.15rem;
+    color:var(--teal);
+    margin-bottom:4px;
+    letter-spacing:0.2px;
+  }
+  .sidebar .sottotitolo{
+    font-size:0.75rem;
+    color:var(--inchiostro-tenue);
+    margin-bottom:18px;
+  }
+  .tab-piano{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    padding:9px 12px;
+    border-radius:8px;
+    cursor:pointer;
+    font-size:0.88rem;
+    border:1px solid transparent;
+    color:var(--inchiostro);
+  }
+  .tab-piano:hover{ background:rgba(31,92,86,0.08); }
+  .tab-piano.attivo{
+    background:var(--carta);
+    border-color:var(--bordo);
+    font-weight:600;
+    color:var(--teal);
+  }
+  .tab-piano .elimina-tab{
+    opacity:0;
+    color:var(--ruggine);
+    font-size:0.8rem;
+    padding:2px 6px;
+    border-radius:4px;
+  }
+  .tab-piano:hover .elimina-tab{ opacity:0.7; }
+  .tab-piano .elimina-tab:hover{ opacity:1; background:rgba(179,73,42,0.12); }
+  .btn-nuovo-piano{
+    margin-top:10px;
+    padding:9px 12px;
+    border-radius:8px;
+    border:1px dashed var(--bordo);
+    background:transparent;
+    color:var(--inchiostro-tenue);
+    cursor:pointer;
+    font-size:0.85rem;
+    text-align:left;
+  }
+  .btn-nuovo-piano:hover{ border-color:var(--teal); color:var(--teal); }
+
+  .main{ padding:28px 36px 60px; overflow-x:auto; }
+  .vuoto{
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    height:70vh;
+    color:var(--inchiostro-tenue);
+    text-align:center;
+    gap:10px;
+  }
+  .vuoto button{
+    margin-top:8px;
+    padding:10px 18px;
+    border-radius:8px;
+    border:none;
+    background:var(--teal);
+    color:var(--carta);
+    cursor:pointer;
+    font-size:0.9rem;
+  }
+
+  .intestazione-piano{
+    display:flex;
+    align-items:baseline;
+    gap:14px;
+    margin-bottom:6px;
+  }
+  .intestazione-piano input[type=text]{
+    font-family:Georgia, serif;
+    font-size:1.5rem;
+    font-weight:600;
+    color:var(--teal);
+    border:none;
+    background:transparent;
+    padding:2px 4px;
+    border-bottom:1px solid transparent;
+  }
+  .intestazione-piano input[type=text]:focus{ outline:none; border-bottom:1px solid var(--bordo); }
+  .sotto-intestazione{ font-size:0.82rem; color:var(--inchiostro-tenue); margin-bottom:22px; }
+
+  .pannello{
+    background:var(--carta);
+    border:1px solid var(--bordo);
+    border-radius:10px;
+    padding:18px 20px;
+    margin-bottom:20px;
+  }
+  .pannello summary{
+    cursor:pointer;
+    font-family:Georgia, serif;
+    font-weight:600;
+    color:var(--teal);
+    font-size:1rem;
+    outline:none;
+  }
+  .pannello[open] summary{ margin-bottom:14px; }
+
+  .riga-campi{ display:flex; gap:18px; flex-wrap:wrap; margin-bottom:12px; }
+  .campo{ display:flex; flex-direction:column; gap:4px; font-size:0.8rem; color:var(--inchiostro-tenue); }
+  .campo input[type=date], .campo input[type=text], .campo input[type=number]{
+    border:1px solid var(--bordo);
+    border-radius:6px;
+    padding:7px 9px;
+    font-size:0.85rem;
+    background:var(--carta);
+    color:var(--inchiostro);
+    font-family:inherit;
+  }
+  .giorni-settimana{ display:flex; gap:6px; flex-wrap:wrap; }
+  .giorno-chip{
+    padding:6px 10px;
+    border-radius:16px;
+    border:1px solid var(--bordo);
+    font-size:0.78rem;
+    cursor:pointer;
+    color:var(--inchiostro-tenue);
+    user-select:none;
+  }
+  .giorno-chip.attivo{ background:var(--teal); border-color:var(--teal); color:var(--carta); }
+
+  table.tabella-moduli{ width:100%; border-collapse:collapse; font-size:0.85rem; }
+  table.tabella-moduli th{
+    text-align:left;
+    font-size:0.72rem;
+    text-transform:uppercase;
+    letter-spacing:0.04em;
+    color:var(--inchiostro-tenue);
+    border-bottom:1px solid var(--bordo);
+    padding:6px 8px;
+    font-weight:600;
+  }
+  table.tabella-moduli td{
+    padding:6px 8px;
+    border-bottom:1px solid rgba(217,203,174,0.5);
+    vertical-align:middle;
+  }
+  table.tabella-moduli input[type=text]{
+    width:100%;
+    border:1px solid transparent;
+    background:transparent;
+    padding:5px 6px;
+    border-radius:5px;
+    font-size:0.85rem;
+    font-family:inherit;
+    color:var(--inchiostro);
+  }
+  table.tabella-moduli input[type=text]:hover, table.tabella-moduli input[type=text]:focus{
+    border-color:var(--bordo); background:var(--carta-alt); outline:none;
+  }
+  table.tabella-moduli input[type=number]{
+    width:56px;
+    border:1px solid var(--bordo);
+    border-radius:5px;
+    padding:5px 6px;
+    font-size:0.85rem;
+    text-align:center;
+    font-family:inherit;
+  }
+  .azione-icona{
+    background:none; border:none; cursor:pointer; color:var(--inchiostro-tenue);
+    font-size:0.95rem; padding:3px 6px; border-radius:5px;
+  }
+  .azione-icona:hover{ background:var(--carta-alt); color:var(--inchiostro); }
+  .azione-icona.elimina:hover{ color:var(--ruggine); }
+  .btn-aggiungi{
+    margin-top:12px;
+    padding:7px 14px;
+    border-radius:6px;
+    border:1px dashed var(--bordo);
+    background:transparent;
+    color:var(--inchiostro-tenue);
+    cursor:pointer;
+    font-size:0.82rem;
+  }
+  .btn-aggiungi:hover{ border-color:var(--teal); color:var(--teal); }
+
+  .lista-eccezioni{ display:flex; flex-direction:column; gap:8px; margin-bottom:12px; }
+  .riga-eccezione{ display:flex; align-items:center; gap:10px; font-size:0.83rem; }
+  .riga-eccezione input[type=date]{ padding:6px 8px; border:1px solid var(--bordo); border-radius:6px; }
+  .riga-eccezione input[type=text]{ flex:1; padding:6px 8px; border:1px solid var(--bordo); border-radius:6px; font-family:inherit; }
+  .badge-tipo{
+    font-size:0.7rem; padding:2px 8px; border-radius:10px; font-weight:600;
+  }
+  .badge-tipo.saltata{ background:rgba(179,73,42,0.14); color:var(--ruggine); }
+  .badge-tipo.extra{ background:rgba(124,138,78,0.16); color:var(--oliva); }
+
+  /* GANTT */
+  .gantt-wrap{ margin-top:8px; }
+  .gantt-riepilogo{
+    display:flex; gap:22px; margin-bottom:16px; font-size:0.82rem; color:var(--inchiostro-tenue);
+  }
+  .gantt-riepilogo b{ color:var(--inchiostro); }
+  .gantt-scroll{ overflow-x:auto; border:1px solid var(--bordo); border-radius:10px; background:var(--carta); }
+  .gantt{ position:relative; min-width:900px; padding:14px 20px 20px; }
+  .gantt-mesi{
+    display:flex;
+    border-bottom:1px solid var(--bordo);
+    margin-bottom:10px;
+    padding-bottom:6px;
+  }
+  .gantt-mese-label{
+    font-size:0.72rem;
+    text-transform:uppercase;
+    letter-spacing:0.04em;
+    color:var(--inchiostro-tenue);
+    border-left:1px solid var(--bordo);
+    padding-left:8px;
+  }
+  .riga-gantt{
+    position:relative;
+    height:40px;
+    border-bottom:1px dashed rgba(217,203,174,0.6);
+  }
+  .riga-gantt:last-child{ border-bottom:none; }
+  .riga-gantt .etichetta-modulo{
+    position:absolute;
+    left:0; top:0;
+    font-size:0.78rem;
+    color:var(--inchiostro-tenue);
+    line-height:40px;
+    pointer-events:none;
+  }
+  .barra-modulo{
+    position:absolute;
+    top:7px;
+    height:26px;
+    border-radius:6px;
+    background:var(--teal-chiaro);
+    display:flex;
+    align-items:center;
+    padding:0 10px;
+    font-size:0.76rem;
+    color:var(--carta);
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    transition:left 0.45s cubic-bezier(.4,0,.2,1), width 0.45s cubic-bezier(.4,0,.2,1), background 0.3s;
+    box-shadow:0 1px 2px rgba(43,36,28,0.15);
+  }
+  .barra-modulo.overflow{ background:var(--ruggine); }
+  .barra-modulo.corrente{ box-shadow:0 0 0 2px var(--ambra); }
+  .oggi-linea{
+    position:absolute;
+    top:0; bottom:0;
+    width:2px;
+    background:var(--ruggine);
+    opacity:0.55;
+  }
+  .oggi-etichetta{
+    position:absolute;
+    top:-16px;
+    font-size:0.65rem;
+    color:var(--ruggine);
+    transform:translateX(-50%);
+    white-space:nowrap;
+  }
+
+  .avviso{
+    margin-top:14px;
+    padding:10px 14px;
+    background:rgba(179,73,42,0.09);
+    border:1px solid rgba(179,73,42,0.3);
+    border-radius:8px;
+    font-size:0.82rem;
+    color:var(--ruggine);
+  }
+
+  .mini-calendario{ margin-top:10px; }
+  .mesi-calendario{ display:flex; flex-wrap:wrap; gap:18px; }
+  .mese-cal{ font-size:0.72rem; }
+  .mese-cal .titolo-mese{ font-weight:600; color:var(--inchiostro-tenue); margin-bottom:4px; text-align:center; text-transform:capitalize; }
+  .griglia-giorni{ display:grid; grid-template-columns:repeat(7,20px); gap:2px; }
+  .giorno-cella{
+    width:20px; height:20px; display:flex; align-items:center; justify-content:center;
+    border-radius:4px; cursor:pointer; color:var(--inchiostro-tenue);
+  }
+  .giorno-cella.lezione{ background:rgba(31,92,86,0.12); color:var(--teal); font-weight:600; }
+  .giorno-cella.saltata{ background:var(--ruggine); color:var(--carta); }
+  .giorno-cella.extra{ background:var(--oliva); color:var(--carta); }
+  .giorno-cella.vuota{ cursor:default; }
+  .giorno-cella:not(.vuota):hover{ outline:1px solid var(--ambra); }
+  .legenda-cal{ display:flex; gap:14px; font-size:0.72rem; color:var(--inchiostro-tenue); margin-top:10px; flex-wrap:wrap; }
+  .legenda-cal span{ display:inline-flex; align-items:center; gap:5px; }
+  .legenda-cal i{ width:10px; height:10px; border-radius:3px; display:inline-block; }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="sidebar" id="sidebar">
+    <h1>Pianificatore</h1>
+    <div class="sottotitolo">Moduli didattici &middot; a cascata</div>
+    <div id="lista-tab"></div>
+    <button class="btn-nuovo-piano" id="btn-nuovo-piano">+ nuovo piano (classe/materia)</button>
+  </div>
+  <div class="main" id="main"></div>
+</div>
+
+<script>
+const CHIAVE_STORAGE = 'pianificatore_moduli_dati_v1';
+const GIORNI_LABEL = ['Lun','Mar','Mer','Gio','Ven','Sab','Dom'];
+const MESI_LABEL = ['gennaio','febbraio','marzo','aprile','maggio','giugno','luglio','agosto','settembre','ottobre','novembre','dicembre'];
+const PALETTE_BARRE = ['#3E7C74','#B8863B','#7C8A4E','#5B7BA6','#8B6BAA','#A6633E'];
+
+function idCasuale(){ return Math.random().toString(36).slice(2,9); }
+function oggiISO(){ return new Date().toISOString().slice(0,10); }
+
+function caricaDati(){
+  try{
+    const raw = localStorage.getItem(CHIAVE_STORAGE);
+    if(raw) return JSON.parse(raw);
+  }catch(e){ console.error(e); }
+  return { piani: [], pianoAttivo: null };
+}
+function salvaDati(){ localStorage.setItem(CHIAVE_STORAGE, JSON.stringify(stato)); }
+
+let stato = caricaDati();
+
+function nuovoPiano(){
+  const p = {
+    id: idCasuale(),
+    nome: 'Nuova materia/classe',
+    dataInizio: oggiISO(),
+    dataFine: (function(){ const d=new Date(); d.setMonth(d.getMonth()+9); return d.toISOString().slice(0,10); })(),
+    giorni: [1,3], // lun, mer di default (0=lun..6=dom)
+    festivita: [],
+    moduli: [
+      { id: idCasuale(), nome: 'Modulo 1', lezioni: 4 },
+      { id: idCasuale(), nome: 'Modulo 2', lezioni: 4 }
+    ],
+    eccezioni: [] // {data, tipo: 'saltata'|'extra', etichetta}
+  };
+  stato.piani.push(p);
+  stato.pianoAttivo = p.id;
+  salvaDati();
+  render();
+}
+
+function pianoCorrente(){
+  return stato.piani.find(p => p.id === stato.pianoAttivo) || null;
+}
+
+function eliminaPiano(id, ev){
+  ev.stopPropagation();
+  if(!confirm('Eliminare questo piano? Non si può annullare.')) return;
+  stato.piani = stato.piani.filter(p => p.id !== id);
+  if(stato.pianoAttivo === id){
+    stato.pianoAttivo = stato.piani.length ? stato.piani[0].id : null;
+  }
+  salvaDati();
+  render();
+}
+
+// ---------- Logica calendario / cascata ----------
+
+function parseISO(s){
+  const [y,m,d] = s.split('-').map(Number);
+  return new Date(y, m-1, d);
+}
+function toISO(d){
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+}
+function giornoSettimanaLunBase(d){
+  // JS: 0=domenica..6=sabato -> convertiamo a 0=lunedì..6=domenica
+  return (d.getDay() + 6) % 7;
+}
+function inFestivita(iso, festivita){
+  return festivita.some(f => iso >= f.da && iso <= f.a);
+}
+
+// Restituisce l'elenco ordinato di date-lezione (ISO) per un piano,
+// tenendo conto di giorni settimanali, festività e eccezioni (saltate/extra)
+function calcolaLezioniDisponibili(piano){
+  const saltate = new Set(piano.eccezioni.filter(e=>e.tipo==='saltata').map(e=>e.data));
+  const extra = piano.eccezioni.filter(e=>e.tipo==='extra').map(e=>e.data);
+  const risultato = [];
+  if(piano.dataInizio && piano.dataFine){
+    let cursore = parseISO(piano.dataInizio);
+    const fine = parseISO(piano.dataFine);
+    while(cursore <= fine){
+      const iso = toISO(cursore);
+      const gg = giornoSettimanaLunBase(cursore);
+      if(piano.giorni.includes(gg) && !inFestivita(iso, piano.festivita) && !saltate.has(iso)){
+        risultato.push(iso);
+      }
+      cursore.setDate(cursore.getDate()+1);
+    }
+  }
+  extra.forEach(iso => { if(!risultato.includes(iso)) risultato.push(iso); });
+  risultato.sort();
+  return risultato;
+}
+
+// Assegna i moduli in sequenza sulle lezioni disponibili
+function calcolaPianificazione(piano){
+  const lezioni = calcolaLezioniDisponibili(piano);
+  let cursore = 0;
+  const righe = [];
+  let overflowTotale = 0;
+  piano.moduli.forEach(m => {
+    const necessarie = Math.max(1, Number(m.lezioni)||1);
+    const disponibiliQui = lezioni.slice(cursore, cursore + necessarie);
+    const overflow = disponibiliQui.length < necessarie;
+    let dataInizio, dataFine;
+    if(disponibiliQui.length > 0){
+      dataInizio = disponibiliQui[0];
+      dataFine = disponibiliQui[disponibiliQui.length-1];
+    } else if(lezioni.length > 0) {
+      dataInizio = lezioni[lezioni.length-1];
+      dataFine = lezioni[lezioni.length-1];
+    } else {
+      dataInizio = piano.dataInizio; dataFine = piano.dataInizio;
+    }
+    if(overflow) overflowTotale += (necessarie - disponibiliQui.length);
+    righe.push({ modulo: m, dataInizio, dataFine, lezioniAssegnate: disponibiliQui.length, lezioniPreviste: necessarie, overflow });
+    cursore += necessarie;
+  });
+  return { lezioni, righe, overflowTotale, lezioniUsate: cursore, lezioniTotali: lezioni.length };
+}
+
+// ---------- Rendering ----------
+
+function render(){
+  renderSidebar();
+  renderMain();
+}
+
+function renderSidebar(){
+  const cont = document.getElementById('lista-tab');
+  cont.innerHTML = '';
+  stato.piani.forEach(p => {
+    const tab = document.createElement('div');
+    tab.className = 'tab-piano' + (p.id===stato.pianoAttivo ? ' attivo':'');
+    tab.innerHTML = `<span>${escapeHtml(p.nome)}</span><span class="elimina-tab" title="Elimina">✕</span>`;
+    tab.addEventListener('click', ()=>{ stato.pianoAttivo = p.id; salvaDati(); render(); });
+    tab.querySelector('.elimina-tab').addEventListener('click', (ev)=>eliminaPiano(p.id, ev));
+    cont.appendChild(tab);
+  });
+}
+
+function escapeHtml(s){
+  const d = document.createElement('div'); d.textContent = s||''; return d.innerHTML;
+}
+
+function renderMain(){
+  const main = document.getElementById('main');
+  const piano = pianoCorrente();
+  if(!piano){
+    main.innerHTML = `<div class="vuoto">
+      <h2>Nessun piano ancora</h2>
+      <div>Crea il tuo primo piano per una classe/materia: aggiungi i moduli e le date, il resto è automatico.</div>
+      <button id="btn-vuoto-nuovo">+ crea il primo piano</button>
+    </div>`;
+    document.getElementById('btn-vuoto-nuovo').addEventListener('click', nuovoPiano);
+    return;
+  }
+
+  const calcolo = calcolaPianificazione(piano);
+
+  main.innerHTML = `
+    <div class="intestazione-piano">
+      <input type="text" id="input-nome-piano" value="${escapeHtml(piano.nome)}">
+    </div>
+    <div class="sotto-intestazione">${formattaDataBreve(piano.dataInizio)} → ${formattaDataBreve(piano.dataFine)} &middot; ${calcolo.lezioniTotali} lezioni disponibili nel periodo</div>
+
+    <details class="pannello" id="pannello-impostazioni">
+      <summary>Impostazioni del piano</summary>
+      <div class="riga-campi">
+        <div class="campo">
+          <label>Inizio</label>
+          <input type="date" id="input-data-inizio" value="${piano.dataInizio}">
+        </div>
+        <div class="campo">
+          <label>Fine</label>
+          <input type="date" id="input-data-fine" value="${piano.dataFine}">
+        </div>
+        <div class="campo">
+          <label>Giorni di lezione nella settimana</label>
+          <div class="giorni-settimana" id="giorni-settimana"></div>
+        </div>
+      </div>
+      <div class="campo" style="margin-top:6px;">
+        <label>Periodi di vacanza / sospensione didattica</label>
+        <div id="lista-festivita" class="lista-eccezioni"></div>
+        <button class="btn-aggiungi" id="btn-aggiungi-festivita">+ aggiungi periodo di vacanza</button>
+      </div>
+    </details>
+
+    <details class="pannello" open id="pannello-moduli">
+      <summary>Moduli</summary>
+      <table class="tabella-moduli">
+        <thead><tr>
+          <th style="width:36px"></th>
+          <th>Modulo</th>
+          <th style="width:110px">Lezioni previste</th>
+          <th style="width:130px">Date pianificate</th>
+          <th style="width:60px"></th>
+        </tr></thead>
+        <tbody id="corpo-tabella-moduli"></tbody>
+      </table>
+      <button class="btn-aggiungi" id="btn-aggiungi-modulo">+ aggiungi modulo</button>
+    </details>
+
+    <details class="pannello" id="pannello-eccezioni">
+      <summary>Lezioni saltate / lezioni extra</summary>
+      <div class="sotto-intestazione" style="margin-bottom:12px;">Clicca un giorno di lezione nel calendario per segnarlo come saltato (assemblea, sciopero, gita...). Clicca un giorno che normalmente non è di lezione per aggiungerlo come lezione extra (recupero).</div>
+      <div class="mini-calendario" id="mini-calendario"></div>
+      <div class="legenda-cal">
+        <span><i style="background:rgba(31,92,86,0.12)"></i>lezione regolare</span>
+        <span><i style="background:var(--ruggine)"></i>saltata</span>
+        <span><i style="background:var(--oliva)"></i>extra / recupero</span>
+      </div>
+    </details>
+
+    <div class="pannello gantt-wrap">
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;">
+        <h3>Diagramma</h3>
+        <button class="btn-aggiungi" id="btn-esporta-word">⤓ esporta crono programma (Word)</button>
+      </div>
+      <div class="gantt-riepilogo">
+        <div><b>${calcolo.righe.filter(r=>!r.overflow).length}</b>/${piano.moduli.length} moduli entro fine periodo</div>
+        ${calcolo.overflowTotale>0 ? `<div style="color:var(--ruggine)"><b>${calcolo.overflowTotale}</b> lezioni mancanti rispetto al piano</div>` : ''}
+      </div>
+      <div class="gantt-scroll"><div class="gantt" id="gantt-area"></div></div>
+      ${calcolo.overflowTotale>0 ? `<div class="avviso">Con il calendario attuale non ci sono abbastanza lezioni per completare tutti i moduli entro il ${formattaDataBreve(piano.dataFine)}. Valuta di allungare il periodo, aggiungere lezioni extra o ridurre le lezioni previste in qualche modulo.</div>` : ''}
+    </div>
+  `;
+
+  // eventi impostazioni
+  document.getElementById('input-nome-piano').addEventListener('input', e=>{ piano.nome=e.target.value; salvaDati(); renderSidebar(); });
+  document.getElementById('input-data-inizio').addEventListener('change', e=>{ piano.dataInizio=e.target.value; salvaDati(); render(); });
+  document.getElementById('input-data-fine').addEventListener('change', e=>{ piano.dataFine=e.target.value; salvaDati(); render(); });
+
+  const contGiorni = document.getElementById('giorni-settimana');
+  GIORNI_LABEL.forEach((lbl, idx)=>{
+    const chip = document.createElement('div');
+    chip.className = 'giorno-chip' + (piano.giorni.includes(idx) ? ' attivo':'');
+    chip.textContent = lbl;
+    chip.addEventListener('click', ()=>{
+      if(piano.giorni.includes(idx)) piano.giorni = piano.giorni.filter(g=>g!==idx);
+      else piano.giorni.push(idx);
+      salvaDati(); render();
+    });
+    contGiorni.appendChild(chip);
+  });
+
+  renderFestivita(piano);
+  document.getElementById('btn-aggiungi-festivita').addEventListener('click', ()=>{
+    piano.festivita.push({ da: piano.dataInizio, a: piano.dataInizio, etichetta:'Vacanza' });
+    salvaDati(); render();
+  });
+
+  renderTabellaModuli(piano);
+  document.getElementById('btn-aggiungi-modulo').addEventListener('click', ()=>{
+    piano.moduli.push({ id: idCasuale(), nome:'Nuovo modulo', lezioni:4 });
+    salvaDati(); render();
+  });
+
+  renderMiniCalendario(piano, calcolo);
+  renderGantt(piano, calcolo);
+
+  document.getElementById('btn-esporta-word').addEventListener('click', ()=> esportaCronoProgrammaWord(piano, calcolo));
+}
+
+// ---------- Esportazione crono programma in Word ----------
+
+function esportaCronoProgrammaWord(piano, calcolo){
+  const righe = calcolo.righe.map(r => `
+    <tr>
+      <td style="padding:6px 10px; border:1px solid #999;">${escapeHtml(r.modulo.nome)}</td>
+      <td style="padding:6px 10px; border:1px solid #999; text-align:center;">${r.lezioniPreviste}</td>
+      <td style="padding:6px 10px; border:1px solid #999;">${formattaDataBreve(r.dataInizio)} – ${formattaDataBreve(r.dataFine)}</td>
+      <td style="padding:6px 10px; border:1px solid #999;">${r.overflow ? 'Lezioni insufficienti nel periodo indicato' : ''}</td>
+    </tr>`).join('');
+
+  const html = `
+  <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
+  <head><meta charset="utf-8">
+  <!--[if gte mso 9]>
+  <xml><w:WordDocument><w:View>Print</w:View><w:Zoom>100</w:Zoom></w:WordDocument></xml>
+  <![endif]-->
+  <style>
+    body{ font-family: Calibri, Arial, sans-serif; font-size:11pt; }
+    h1{ font-size:14pt; margin-bottom:2pt; }
+    p.sotto{ font-size:10pt; color:#555; margin-top:0; margin-bottom:14pt; }
+    table{ border-collapse:collapse; width:100%; }
+    th{ background:#EFE7D6; padding:6px 10px; border:1px solid #999; text-align:left; font-size:10.5pt; }
+  </style>
+  </head>
+  <body>
+    <h1>Crono programma — ${escapeHtml(piano.nome)}</h1>
+    <p class="sotto">Periodo: ${formattaDataBreve(piano.dataInizio)} – ${formattaDataBreve(piano.dataFine)} &nbsp;·&nbsp; ${calcolo.lezioniTotali} lezioni disponibili nel periodo</p>
+    <table>
+      <thead>
+        <tr>
+          <th style="width:32%;">Modulo</th>
+          <th style="width:14%;">N. lezioni</th>
+          <th style="width:30%;">Periodo previsto</th>
+          <th style="width:24%;">Note</th>
+        </tr>
+      </thead>
+      <tbody>${righe}</tbody>
+    </table>
+  </body>
+  </html>`;
+
+  const blob = new Blob(['\ufeff', html], { type: 'application/msword' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  const nomeFile = piano.nome.replace(/[^a-z0-9àèéìòù ]/gi,'').trim().replace(/\s+/g,'_') || 'piano';
+  a.download = nomeFile + '_crono_programma.doc';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function formattaDataBreve(iso){
+  if(!iso) return '';
+  const d = parseISO(iso);
+  return String(d.getDate()).padStart(2,'0') + ' ' + MESI_LABEL[d.getMonth()].slice(0,3) + ' ' + d.getFullYear();
+}
+
+function renderFestivita(piano){
+  const cont = document.getElementById('lista-festivita');
+  cont.innerHTML = '';
+  piano.festivita.forEach((f, i)=>{
+    const riga = document.createElement('div');
+    riga.className = 'riga-eccezione';
+    riga.innerHTML = `
+      <input type="text" value="${escapeHtml(f.etichetta)}" data-campo="etichetta">
+      <input type="date" value="${f.da}" data-campo="da">
+      <span>→</span>
+      <input type="date" value="${f.a}" data-campo="a">
+      <button class="azione-icona elimina" title="Rimuovi">✕</button>
+    `;
+    riga.querySelector('[data-campo=etichetta]').addEventListener('input', e=>{ f.etichetta=e.target.value; salvaDati(); });
+    riga.querySelector('[data-campo=da]').addEventListener('change', e=>{ f.da=e.target.value; salvaDati(); renderGanttOnly(); });
+    riga.querySelector('[data-campo=a]').addEventListener('change', e=>{ f.a=e.target.value; salvaDati(); renderGanttOnly(); });
+    riga.querySelector('.elimina').addEventListener('click', ()=>{ piano.festivita.splice(i,1); salvaDati(); render(); });
+    cont.appendChild(riga);
+  });
+}
+
+function renderTabellaModuli(piano){
+  const corpo = document.getElementById('corpo-tabella-moduli');
+  corpo.innerHTML = '';
+  const calcolo = calcolaPianificazione(piano);
+  piano.moduli.forEach((m, i)=>{
+    const riga = calcolo.righe[i];
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>
+        <button class="azione-icona" data-azione="su" title="Sposta su">↑</button>
+        <button class="azione-icona" data-azione="giu" title="Sposta giù">↓</button>
+      </td>
+      <td><input type="text" value="${escapeHtml(m.nome)}" data-campo="nome"></td>
+      <td><input type="number" min="1" value="${m.lezioni}" data-campo="lezioni"></td>
+      <td style="font-size:0.78rem; color:${riga.overflow?'var(--ruggine)':'var(--inchiostro-tenue)'};">
+        ${formattaDataBreve(riga.dataInizio)} – ${formattaDataBreve(riga.dataFine)}${riga.overflow ? ' ⚠︎':''}
+      </td>
+      <td><button class="azione-icona elimina" data-azione="elimina" title="Elimina modulo">✕</button></td>
+    `;
+    tr.querySelector('[data-campo=nome]').addEventListener('input', e=>{ m.nome=e.target.value; salvaDati(); renderSidebarNoop(); renderGanttOnly(); });
+    tr.querySelector('[data-campo=lezioni]').addEventListener('input', e=>{ m.lezioni = Math.max(1, parseInt(e.target.value)||1); salvaDati(); renderTabellaModuli(piano); renderGanttOnly(); });
+    tr.querySelector('[data-azione=elimina]').addEventListener('click', ()=>{ piano.moduli.splice(i,1); salvaDati(); render(); });
+    tr.querySelector('[data-azione=su]').addEventListener('click', ()=>{ if(i>0){ [piano.moduli[i-1],piano.moduli[i]]=[piano.moduli[i],piano.moduli[i-1]]; salvaDati(); render(); } });
+    tr.querySelector('[data-azione=giu]').addEventListener('click', ()=>{ if(i<piano.moduli.length-1){ [piano.moduli[i+1],piano.moduli[i]]=[piano.moduli[i],piano.moduli[i+1]]; salvaDati(); render(); } });
+    corpo.appendChild(tr);
+  });
+}
+
+function renderSidebarNoop(){} // placeholder per chiarezza chiamate
+
+function renderMiniCalendario(piano, calcolo){
+  const cont = document.getElementById('mini-calendario');
+  cont.innerHTML = '';
+  if(!piano.dataInizio || !piano.dataFine){ return; }
+  const wrap = document.createElement('div');
+  wrap.className = 'mesi-calendario';
+  const lezioniSet = new Set(calcolo.lezioni);
+  const saltateMap = {}; const extraMap = {};
+  piano.eccezioni.forEach(e=>{ if(e.tipo==='saltata') saltateMap[e.data]=true; if(e.tipo==='extra') extraMap[e.data]=true; });
+
+  let cursore = new Date(parseISO(piano.dataInizio).getFullYear(), parseISO(piano.dataInizio).getMonth(), 1);
+  const fine = parseISO(piano.dataFine);
+  let guardia = 0;
+  while(cursore <= fine && guardia < 36){
+    guardia++;
+    const meseDiv = document.createElement('div');
+    meseDiv.className = 'mese-cal';
+    const titolo = document.createElement('div');
+    titolo.className = 'titolo-mese';
+    titolo.textContent = MESI_LABEL[cursore.getMonth()] + ' ' + cursore.getFullYear();
+    meseDiv.appendChild(titolo);
+    const griglia = document.createElement('div');
+    griglia.className = 'griglia-giorni';
+    const primoDelMese = new Date(cursore.getFullYear(), cursore.getMonth(), 1);
+    const offset = giornoSettimanaLunBase(primoDelMese);
+    for(let v=0; v<offset; v++){
+      const vuota = document.createElement('div'); vuota.className='giorno-cella vuota'; griglia.appendChild(vuota);
+    }
+    const giorniNelMese = new Date(cursore.getFullYear(), cursore.getMonth()+1, 0).getDate();
+    for(let g=1; g<=giorniNelMese; g++){
+      const d = new Date(cursore.getFullYear(), cursore.getMonth(), g);
+      const iso = toISO(d);
+      const cella = document.createElement('div');
+      let cls = 'giorno-cella';
+      if(saltateMap[iso]) cls += ' saltata';
+      else if(extraMap[iso]) cls += ' extra';
+      else if(lezioniSet.has(iso)) cls += ' lezione';
+      cella.className = cls;
+      cella.textContent = g;
+      cella.title = iso;
+      if(iso >= piano.dataInizio && iso <= piano.dataFine){
+        cella.addEventListener('click', ()=> toggleGiornoCalendario(piano, iso, lezioniSet.has(iso) || saltateMap[iso] || extraMap[iso], saltateMap[iso], extraMap[iso]));
+      } else {
+        cella.style.opacity = '0.3';
+      }
+      griglia.appendChild(cella);
+    }
+    meseDiv.appendChild(griglia);
+    wrap.appendChild(meseDiv);
+    cursore.setMonth(cursore.getMonth()+1);
+  }
+  cont.appendChild(wrap);
+}
+
+function toggleGiornoCalendario(piano, iso, eraLezioneOEccezione, eraSaltata, eraExtra){
+  // ciclo di stato per il giorno cliccato:
+  // lezione regolare -> saltata -> regolare
+  // giorno non di lezione -> extra -> non di lezione
+  const gg = giornoSettimanaLunBase(parseISO(iso));
+  const regolare = piano.giorni.includes(gg) && !inFestivita(iso, piano.festivita);
+
+  if(eraSaltata){
+    piano.eccezioni = piano.eccezioni.filter(e => !(e.data===iso && e.tipo==='saltata'));
+  } else if(eraExtra){
+    piano.eccezioni = piano.eccezioni.filter(e => !(e.data===iso && e.tipo==='extra'));
+  } else if(regolare){
+    piano.eccezioni.push({ data: iso, tipo:'saltata', etichetta:'' });
+  } else {
+    piano.eccezioni.push({ data: iso, tipo:'extra', etichetta:'' });
+  }
+  salvaDati();
+  render();
+}
+
+function renderGanttOnly(){
+  const piano = pianoCorrente();
+  if(!piano) return;
+  const calcolo = calcolaPianificazione(piano);
+  renderGantt(piano, calcolo);
+  renderMiniCalendario(piano, calcolo);
+}
+
+function renderGantt(piano, calcolo){
+  const area = document.getElementById('gantt-area');
+  if(!area) return;
+  area.innerHTML = '';
+  if(!piano.dataInizio || !piano.dataFine || piano.moduli.length===0){
+    area.innerHTML = '<div style="color:var(--inchiostro-tenue); font-size:0.85rem; padding:20px;">Aggiungi date e almeno un modulo per vedere il diagramma.</div>';
+    return;
+  }
+  const inizio = parseISO(piano.dataInizio);
+  const fine = parseISO(piano.dataFine);
+  const totaleGiorni = Math.max(1, (fine - inizio) / 86400000);
+
+  // riga mesi
+  const rigaMesi = document.createElement('div');
+  rigaMesi.className = 'gantt-mesi';
+  let cursoreMese = new Date(inizio.getFullYear(), inizio.getMonth(), 1);
+  const segmenti = [];
+  while(cursoreMese <= fine){
+    const inizioSeg = cursoreMese < inizio ? inizio : new Date(cursoreMese);
+    const fineMese = new Date(cursoreMese.getFullYear(), cursoreMese.getMonth()+1, 0);
+    const fineSeg = fineMese > fine ? fine : fineMese;
+    const giorniSeg = Math.max(1, (fineSeg - inizioSeg) / 86400000 + 1);
+    segmenti.push({ label: MESI_LABEL[cursoreMese.getMonth()].slice(0,3), giorni: giorniSeg });
+    cursoreMese.setMonth(cursoreMese.getMonth()+1);
+  }
+  segmenti.forEach(s => {
+    const el = document.createElement('div');
+    el.className = 'gantt-mese-label';
+    el.style.flex = s.giorni + ' 0 0';
+    el.textContent = s.label;
+    rigaMesi.appendChild(el);
+  });
+  area.appendChild(rigaMesi);
+
+  const oggi = new Date();
+  const offsetOggiPerc = oggi >= inizio && oggi <= fine ? ((oggi - inizio)/86400000 / totaleGiorni * 100) : null;
+
+  const corpoGantt = document.createElement('div');
+  corpoGantt.style.position = 'relative';
+
+  calcolo.righe.forEach((riga, i) => {
+    const rigaEl = document.createElement('div');
+    rigaEl.className = 'riga-gantt';
+    const dIn = parseISO(riga.dataInizio);
+    const dFi = parseISO(riga.dataFine);
+    const leftPerc = Math.max(0, (dIn - inizio)/86400000 / totaleGiorni * 100);
+    const widthPerc = Math.max(1.2, ((dFi - dIn)/86400000 + 1) / totaleGiorni * 100);
+    const barra = document.createElement('div');
+    barra.className = 'barra-modulo' + (riga.overflow ? ' overflow':'');
+    barra.style.left = leftPerc + '%';
+    barra.style.width = widthPerc + '%';
+    barra.style.background = riga.overflow ? '' : PALETTE_BARRE[i % PALETTE_BARRE.length];
+    barra.textContent = riga.modulo.nome + ' · ' + riga.lezioniAssegnate + '/' + riga.lezioniPreviste;
+    barra.title = riga.modulo.nome + ': ' + formattaDataBreve(riga.dataInizio) + ' – ' + formattaDataBreve(riga.dataFine) + (riga.overflow ? ' (lezioni insufficienti)':'');
+    rigaEl.appendChild(barra);
+    corpoGantt.appendChild(rigaEl);
+  });
+
+  if(offsetOggiPerc !== null){
+    const linea = document.createElement('div');
+    linea.className = 'oggi-linea';
+    linea.style.left = offsetOggiPerc + '%';
+    const etichetta = document.createElement('div');
+    etichetta.className = 'oggi-etichetta';
+    etichetta.style.left = offsetOggiPerc + '%';
+    etichetta.textContent = 'oggi';
+    linea.appendChild(etichetta);
+    corpoGantt.appendChild(linea);
+    corpoGantt.style.minHeight = (calcolo.righe.length * 40) + 'px';
+  }
+
+  area.appendChild(corpoGantt);
+}
+
+document.getElementById('btn-nuovo-piano').addEventListener('click', nuovoPiano);
+
+if(stato.piani.length === 0){
+  render();
+} else {
+  if(!stato.pianoAttivo) stato.pianoAttivo = stato.piani[0].id;
+  render();
+}
+</script>
+</body>
+</html>
