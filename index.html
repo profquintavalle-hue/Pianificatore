@@ -498,8 +498,25 @@ function escapeHtml(s){
   const d = document.createElement('div'); d.textContent = s||''; return d.innerHTML;
 }
 
+function catturaStatoPannelli(){
+  const ids = ['pannello-impostazioni','pannello-moduli','pannello-eccezioni'];
+  const stato = {};
+  ids.forEach(id=>{
+    const el = document.getElementById(id);
+    if(el) stato[id] = el.open;
+  });
+  return stato;
+}
+function ripristinaStatoPannelli(stato){
+  Object.keys(stato).forEach(id=>{
+    const el = document.getElementById(id);
+    if(el) el.open = stato[id];
+  });
+}
+
 function renderMain(){
   const main = document.getElementById('main');
+  const statoPannelliPrecedente = catturaStatoPannelli();
   const piano = pianoCorrente();
   if(!piano){
     main.innerHTML = `<div class="vuoto">
@@ -571,7 +588,7 @@ function renderMain(){
     <div class="pannello gantt-wrap">
       <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;">
         <h3>Diagramma</h3>
-        <button class="btn-aggiungi" id="btn-esporta-word">⤓ esporta crono programma (Word)</button>
+        <button class="btn-aggiungi" id="btn-esporta-word">⤓ esporta crono programma (RTF — Word/Pages)</button>
       </div>
       <div class="gantt-riepilogo">
         <div><b>${calcolo.righe.filter(r=>!r.overflow).length}</b>/${piano.moduli.length} moduli entro fine periodo</div>
@@ -581,6 +598,8 @@ function renderMain(){
       ${calcolo.overflowTotale>0 ? `<div class="avviso">Con il calendario attuale non ci sono abbastanza lezioni per completare tutti i moduli entro il ${formattaDataBreve(piano.dataFine)}. Valuta di allungare il periodo, aggiungere lezioni extra o ridurre le lezioni previste in qualche modulo.</div>` : ''}
     </div>
   `;
+
+  ripristinaStatoPannelli(statoPannelliPrecedente);
 
   // eventi impostazioni
   document.getElementById('input-nome-piano').addEventListener('input', e=>{ piano.nome=e.target.value; salvaDati(); renderSidebar(); });
@@ -618,54 +637,54 @@ function renderMain(){
   document.getElementById('btn-esporta-word').addEventListener('click', ()=> esportaCronoProgrammaWord(piano, calcolo));
 }
 
-// ---------- Esportazione crono programma in Word ----------
+// ---------- Esportazione crono programma in RTF (Word, Pages, TextEdit) ----------
+
+function rtfEscape(s){
+  return String(s==null?'':s)
+    .replace(/\\/g,'\\\\')
+    .replace(/\{/g,'\\{')
+    .replace(/\}/g,'\\}')
+    .replace(/[\u0080-\uffff]/g, c => '\\u' + c.charCodeAt(0) + '?');
+}
 
 function esportaCronoProgrammaWord(piano, calcolo){
-  const righe = calcolo.righe.map(r => `
-    <tr>
-      <td style="padding:6px 10px; border:1px solid #999;">${escapeHtml(r.modulo.nome)}</td>
-      <td style="padding:6px 10px; border:1px solid #999; text-align:center;">${r.lezioniPreviste}</td>
-      <td style="padding:6px 10px; border:1px solid #999;">${formattaDataBreve(r.dataInizio)} – ${formattaDataBreve(r.dataFine)}</td>
-      <td style="padding:6px 10px; border:1px solid #999;">${r.overflow ? 'Lezioni insufficienti nel periodo indicato' : ''}</td>
-    </tr>`).join('');
+  // larghezze colonne in twips (1440 twips = 1 pollice), cumulative per \cellx
+  const larghezze = [3200, 1500, 3000, 3300];
+  let cum = 0;
+  const cellx = larghezze.map(w => (cum += w));
 
-  const html = `
-  <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
-  <head><meta charset="utf-8">
-  <!--[if gte mso 9]>
-  <xml><w:WordDocument><w:View>Print</w:View><w:Zoom>100</w:Zoom></w:WordDocument></xml>
-  <![endif]-->
-  <style>
-    body{ font-family: Calibri, Arial, sans-serif; font-size:11pt; }
-    h1{ font-size:14pt; margin-bottom:2pt; }
-    p.sotto{ font-size:10pt; color:#555; margin-top:0; margin-bottom:14pt; }
-    table{ border-collapse:collapse; width:100%; }
-    th{ background:#EFE7D6; padding:6px 10px; border:1px solid #999; text-align:left; font-size:10.5pt; }
-  </style>
-  </head>
-  <body>
-    <h1>Crono programma — ${escapeHtml(piano.nome)}</h1>
-    <p class="sotto">Periodo: ${formattaDataBreve(piano.dataInizio)} – ${formattaDataBreve(piano.dataFine)} &nbsp;·&nbsp; ${calcolo.lezioniTotali} lezioni disponibili nel periodo</p>
-    <table>
-      <thead>
-        <tr>
-          <th style="width:32%;">Modulo</th>
-          <th style="width:14%;">N. lezioni</th>
-          <th style="width:30%;">Periodo previsto</th>
-          <th style="width:24%;">Note</th>
-        </tr>
-      </thead>
-      <tbody>${righe}</tbody>
-    </table>
-  </body>
-  </html>`;
+  function rigaTabella(celle, grassetto){
+    let r = '\\trowd\\trgaph108\\trleft0';
+    cellx.forEach(x => r += '\\cellx' + x);
+    r += '\n\\intbl ';
+    celle.forEach(c => {
+      r += (grassetto ? '\\b ' : '') + rtfEscape(c) + (grassetto ? '\\b0' : '') + '\\cell ';
+    });
+    r += '\\row\n';
+    return r;
+  }
 
-  const blob = new Blob(['\ufeff', html], { type: 'application/msword' });
+  let rtf = '{\\rtf1\\ansi\\ansicpg1252\\deff0\\deflang1040{\\fonttbl{\\f0\\fswiss\\fcharset0 Calibri;}}\n';
+  rtf += '\\f0\\fs22\n';
+  rtf += '{\\pard\\b\\fs32 Crono programma \\emdash ' + rtfEscape(piano.nome) + '\\par}\n';
+  rtf += '{\\pard\\fs18\\sa240 Periodo: ' + rtfEscape(formattaDataBreve(piano.dataInizio)) + ' \\endash ' + rtfEscape(formattaDataBreve(piano.dataFine)) + '   \\emdash   ' + calcolo.lezioniTotali + ' lezioni disponibili nel periodo\\par}\n';
+  rtf += rigaTabella(['Modulo','N. lezioni','Periodo previsto','Note'], true);
+  calcolo.righe.forEach(r=>{
+    rtf += rigaTabella([
+      r.modulo.nome,
+      String(r.lezioniPreviste),
+      formattaDataBreve(r.dataInizio) + ' \\endash ' + formattaDataBreve(r.dataFine),
+      r.overflow ? 'Lezioni insufficienti nel periodo indicato' : ''
+    ]);
+  });
+  rtf += '\\pard\\par}';
+
+  const blob = new Blob([rtf], { type: 'application/rtf' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
   const nomeFile = piano.nome.replace(/[^a-z0-9àèéìòù ]/gi,'').trim().replace(/\s+/g,'_') || 'piano';
-  a.download = nomeFile + '_crono_programma.doc';
+  a.download = nomeFile + '_crono_programma.rtf';
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
