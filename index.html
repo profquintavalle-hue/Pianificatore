@@ -94,6 +94,43 @@
   }
   .btn-nuovo-piano:hover{ border-color:var(--teal); color:var(--teal); }
 
+  .sezione-backup{
+    margin-top:auto;
+    padding-top:18px;
+    border-top:1px solid var(--bordo);
+    display:flex;
+    flex-direction:column;
+    gap:8px;
+  }
+  .titolo-backup{
+    font-size:0.72rem;
+    text-transform:uppercase;
+    letter-spacing:0.05em;
+    color:var(--inchiostro-tenue);
+    font-weight:600;
+    margin-bottom:2px;
+  }
+  .btn-backup{
+    padding:8px 12px;
+    border-radius:8px;
+    border:1px solid var(--bordo);
+    background:var(--carta);
+    color:var(--inchiostro);
+    cursor:pointer;
+    font-size:0.82rem;
+    text-align:left;
+    font-family:inherit;
+  }
+  .btn-backup:hover{ border-color:var(--teal); color:var(--teal); }
+  .nota-backup{
+    font-size:0.7rem;
+    color:var(--inchiostro-tenue);
+    line-height:1.4;
+    margin-top:2px;
+  }
+  .nota-backup.ok{ color:var(--oliva); font-weight:600; }
+  .nota-backup.errore{ color:var(--ruggine); font-weight:600; }
+
   .main{ padding:28px 36px 60px; overflow-x:auto; }
   .vuoto{
     display:flex;
@@ -410,6 +447,13 @@
     <div class="sottotitolo">Moduli didattici &middot; a cascata</div>
     <div id="lista-tab"></div>
     <button class="btn-nuovo-piano" id="btn-nuovo-piano">+ nuovo piano (classe/materia)</button>
+    <div class="sezione-backup">
+      <div class="titolo-backup">Backup</div>
+      <button class="btn-backup" id="btn-esporta-backup">⤓ Salva backup su file</button>
+      <button class="btn-backup" id="btn-importa-backup">⤒ Ripristina da file</button>
+      <input type="file" id="input-file-backup" accept=".json,application/json" style="display:none">
+      <div class="nota-backup" id="nota-backup">Consiglio: salva il file nel tuo Google Drive dopo modifiche importanti.</div>
+    </div>
   </div>
   <div class="main" id="main"></div>
 </div>
@@ -430,9 +474,15 @@ function caricaDati(){
   }catch(e){ console.error(e); }
   return { piani: [], pianoAttivo: null };
 }
-function salvaDati(){ localStorage.setItem(CHIAVE_STORAGE, JSON.stringify(stato)); }
+function salvaDati(){
+  localStorage.setItem(CHIAVE_STORAGE, JSON.stringify(stato));
+  ultimaModifica = Date.now();
+}
 
 let stato = caricaDati();
+// Promemoria backup: confrontiamo l'ultima modifica con l'ultimo salvataggio su file.
+let ultimaModifica = 0;   // impostata da salvaDati()
+let ultimoBackup = 0;     // impostata da esportaBackup()
 
 function nuovoPiano(){
   const p = {
@@ -1203,6 +1253,101 @@ function renderGantt(piano, calcolo){
 }
 
 document.getElementById('btn-nuovo-piano').addEventListener('click', nuovoPiano);
+
+// ---------- Backup su file (esporta / ripristina) ----------
+
+function mostraNotaBackup(testo, classe){
+  const nota = document.getElementById('nota-backup');
+  if(!nota) return;
+  nota.textContent = testo;
+  nota.className = 'nota-backup' + (classe ? ' ' + classe : '');
+  if(classe){
+    clearTimeout(mostraNotaBackup._t);
+    mostraNotaBackup._t = setTimeout(()=>{
+      nota.className = 'nota-backup';
+      nota.textContent = 'Consiglio: salva il file nel tuo Google Drive dopo modifiche importanti.';
+    }, 5000);
+  }
+}
+
+function esportaBackup(){
+  const dati = {
+    _formato: 'pianificatore-backup',
+    _versione: 1,
+    _dataEsportazione: new Date().toISOString(),
+    stato: stato
+  };
+  const blob = new Blob([JSON.stringify(dati, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  const oggi = new Date();
+  const stamp = oggi.getFullYear() + '-' + String(oggi.getMonth()+1).padStart(2,'0') + '-' + String(oggi.getDate()).padStart(2,'0');
+  const nPiani = (stato.piani||[]).length;
+  a.download = 'pianificatore_backup_' + stamp + '_' + nPiani + 'piani.json';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  ultimoBackup = Date.now();
+  mostraNotaBackup('Backup salvato (' + nPiani + ' ' + (nPiani===1?'piano':'piani') + '). Conservalo nel tuo Drive.', 'ok');
+}
+
+function importaBackup(file){
+  const reader = new FileReader();
+  reader.onload = e => {
+    try{
+      const dati = JSON.parse(e.target.result);
+      let statoImportato = null;
+      if(dati && dati._formato === 'pianificatore-backup' && dati.stato && Array.isArray(dati.stato.piani)){
+        statoImportato = dati.stato;
+      } else if(dati && Array.isArray(dati.piani)){
+        statoImportato = dati; // tolleranza: file che contiene direttamente lo stato
+      }
+      if(!statoImportato){
+        mostraNotaBackup('File non valido: non sembra un backup del pianificatore.', 'errore');
+        return;
+      }
+      const nPiani = statoImportato.piani.length;
+      const conferma = confirm(
+        'Ripristinare ' + nPiani + ' ' + (nPiani===1?'piano':'piani') + ' da questo file?\n\n' +
+        'ATTENZIONE: i piani attualmente presenti in questo dispositivo verranno sostituiti da quelli del file.\n\n' +
+        'Se vuoi prima mettere al sicuro lo stato attuale, annulla e usa "Salva backup su file".'
+      );
+      if(!conferma) return;
+      stato = statoImportato;
+      if(!stato.pianoAttivo && stato.piani.length) stato.pianoAttivo = stato.piani[0].id;
+      salvaDati();
+      ultimoBackup = Date.now(); // subito dopo il ripristino, il file su disco coincide con i dati
+      render();
+      mostraNotaBackup('Ripristino completato: ' + nPiani + ' ' + (nPiani===1?'piano':'piani') + '.', 'ok');
+    }catch(err){
+      console.error(err);
+      mostraNotaBackup('Impossibile leggere il file (formato non riconosciuto).', 'errore');
+    }
+  };
+  reader.onerror = () => mostraNotaBackup('Errore nella lettura del file.', 'errore');
+  reader.readAsText(file);
+}
+
+document.getElementById('btn-esporta-backup').addEventListener('click', esportaBackup);
+document.getElementById('btn-importa-backup').addEventListener('click', ()=> document.getElementById('input-file-backup').click());
+document.getElementById('input-file-backup').addEventListener('change', e=>{
+  const file = e.target.files && e.target.files[0];
+  if(file) importaBackup(file);
+  e.target.value = ''; // consente di re-importare lo stesso file
+});
+
+// Promemoria alla chiusura/ricarica: se ci sono modifiche più recenti dell'ultimo
+// backup su file, il browser mostra l'avviso nativo "vuoi lasciare la pagina?".
+// (I dati restano comunque salvati nel browser; questo serve solo a ricordare il backup su file.)
+window.addEventListener('beforeunload', e=>{
+  if(ultimaModifica > ultimoBackup && (stato.piani||[]).length > 0){
+    e.preventDefault();
+    e.returnValue = ''; // richiesto da alcuni browser per attivare l'avviso
+    return '';
+  }
+});
 
 if(stato.piani.length === 0){
   render();
