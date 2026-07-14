@@ -325,6 +325,16 @@
     display:flex; gap:22px; margin-bottom:16px; font-size:0.82rem; color:var(--inchiostro-tenue);
   }
   .gantt-riepilogo b{ color:var(--inchiostro); }
+  .banner-sforo{
+    background:rgba(179,73,42,0.1); border:1px solid rgba(179,73,42,0.35); color:var(--ruggine);
+    border-radius:8px; padding:11px 15px; margin-bottom:14px; font-size:0.88rem; line-height:1.5;
+  }
+  .banner-sforo b{ color:var(--ruggine); }
+  .banner-ok{
+    background:rgba(124,138,78,0.1); border:1px solid rgba(124,138,78,0.3); color:var(--oliva);
+    border-radius:8px; padding:11px 15px; margin-bottom:14px; font-size:0.88rem; line-height:1.5;
+  }
+  .banner-ok b{ color:var(--oliva); }
   .gantt-scroll{ overflow-x:auto; border:1px solid var(--bordo); border-radius:10px; background:var(--carta); }
   .gantt{ position:relative; min-width:900px; padding:14px 20px 20px; }
   .gantt-mesi{
@@ -1170,15 +1180,20 @@ function renderGanttOnly(){
 function renderPannelloDiagramma(piano, calcolo){
   const cont = document.getElementById('pannello-diagramma');
   if(!cont) return;
+  const totSpieg = calcolo.righe.reduce((s,r)=>s+r.lezioniPreviste,0);
+  const totVerif = calcolo.righe.reduce((s,r)=>s+r.lezioniVerifica,0);
+  const totServe = totSpieg + totVerif + calcolo.overflowTotale;
+  const sfora = calcolo.overflowTotale;
   cont.innerHTML = `
     <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;">
       <h3>Diagramma</h3>
       <button class="btn-aggiungi" id="btn-esporta-word">⤓ esporta crono programma (RTF — Word/Pages)</button>
     </div>
+    ${sfora>0
+      ? `<div class="banner-sforo">⚠︎ Stai sforando di <b>${sfora}</b> ${sfora===1?'lezione':'lezioni'}: la programmazione richiede <b>${totServe}</b> lezioni (${totSpieg} di spiegazione + ${totVerif+sfora} di verifica) ma nel periodo ne hai solo <b>${calcolo.lezioniTotali}</b>.</div>`
+      : `<div class="banner-ok">✓ La programmazione ci sta: richiede <b>${totServe}</b> lezioni (${totSpieg} di spiegazione + ${totVerif} di verifica) su <b>${calcolo.lezioniTotali}</b> disponibili — margine di <b>${calcolo.lezioniTotali - totServe}</b> ${(calcolo.lezioniTotali-totServe)===1?'lezione':'lezioni'}.</div>`}
     <div class="gantt-riepilogo">
       <div><b>${calcolo.righe.filter(r=>!r.overflow).length}</b>/${piano.moduli.length} moduli entro fine periodo</div>
-      <div>Servono <b>${calcolo.righe.reduce((s,r)=>s+r.lezioniPreviste,0)}</b> lezioni di spiegazione + <b>${calcolo.righe.reduce((s,r)=>s+r.lezioniVerifica,0) + calcolo.overflowTotale}</b> di verifica = <b>${calcolo.righe.reduce((s,r)=>s+r.lezioniPreviste,0) + calcolo.righe.reduce((s,r)=>s+r.lezioniVerifica,0) + calcolo.overflowTotale}</b>, su <b>${calcolo.lezioniTotali}</b> disponibili</div>
-      ${calcolo.overflowTotale>0 ? `<div style="color:var(--ruggine)"><b>${calcolo.overflowTotale}</b> ${calcolo.overflowTotale===1?'lezione manca':'lezioni mancano'} nel periodo</div>` : ''}
     </div>
     <div class="gantt-scroll"><div class="gantt" id="gantt-area"></div></div>
     ${calcolo.overflowTotale>0 ? `<div class="avviso">Con il calendario attuale non ci sono abbastanza lezioni per completare tutti i moduli entro il ${formattaDataBreve(piano.dataFine)}. Valuta di allungare il periodo, aggiungere lezioni extra o ridurre le lezioni previste in qualche modulo.</div>` : ''}
