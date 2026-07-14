@@ -693,7 +693,13 @@ function calcolaPianificazione(piano){
         cursore = Math.max(cursore, (indici.length ? indici[indici.length-1] : ultimoIdx) + 1);
       }
 
-      if(occupano) riga.lezioniVerifica += durata;
+      // Conta come "occupate" solo le lezioni effettivamente collocate;
+      // le lezioni volute ma non collocabili (fuori periodo) diventano overflow.
+      if(occupano){
+        riga.lezioniVerifica += indici.length;
+        const mancanti = durata - indici.length;
+        if(mancanti > 0) overflowTotale += mancanti;
+      }
       verifichePianificate.push({
         verifica: v,
         modulo: m,
@@ -1171,8 +1177,8 @@ function renderPannelloDiagramma(piano, calcolo){
     </div>
     <div class="gantt-riepilogo">
       <div><b>${calcolo.righe.filter(r=>!r.overflow).length}</b>/${piano.moduli.length} moduli entro fine periodo</div>
-      <div><b>${calcolo.righe.reduce((s,r)=>s+r.lezioniPreviste,0)}</b> lezioni di spiegazione + <b>${calcolo.righe.reduce((s,r)=>s+r.lezioniVerifica,0)}</b> di verifica su <b>${calcolo.lezioniTotali}</b> disponibili</div>
-      ${calcolo.overflowTotale>0 ? `<div style="color:var(--ruggine)"><b>${calcolo.overflowTotale}</b> lezioni mancanti rispetto al piano</div>` : ''}
+      <div>Servono <b>${calcolo.righe.reduce((s,r)=>s+r.lezioniPreviste,0)}</b> lezioni di spiegazione + <b>${calcolo.righe.reduce((s,r)=>s+r.lezioniVerifica,0) + calcolo.overflowTotale}</b> di verifica = <b>${calcolo.righe.reduce((s,r)=>s+r.lezioniPreviste,0) + calcolo.righe.reduce((s,r)=>s+r.lezioniVerifica,0) + calcolo.overflowTotale}</b>, su <b>${calcolo.lezioniTotali}</b> disponibili</div>
+      ${calcolo.overflowTotale>0 ? `<div style="color:var(--ruggine)"><b>${calcolo.overflowTotale}</b> ${calcolo.overflowTotale===1?'lezione manca':'lezioni mancano'} nel periodo</div>` : ''}
     </div>
     <div class="gantt-scroll"><div class="gantt" id="gantt-area"></div></div>
     ${calcolo.overflowTotale>0 ? `<div class="avviso">Con il calendario attuale non ci sono abbastanza lezioni per completare tutti i moduli entro il ${formattaDataBreve(piano.dataFine)}. Valuta di allungare il periodo, aggiungere lezioni extra o ridurre le lezioni previste in qualche modulo.</div>` : ''}
