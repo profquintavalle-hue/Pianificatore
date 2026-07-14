@@ -575,6 +575,27 @@ function etichettaVerifica(v, modulo){
   return tipo + ' ' + qualifica + ' — ' + modulo.nome;
 }
 
+// Messaggio chiaro sul perché una verifica non è collocabile.
+// esteso=true → testo lungo per il tooltip; esteso=false → etichetta breve.
+function messaggioProblemaVerifica(motivo, esteso){
+  switch(motivo){
+    case 'non-lezione':
+      return esteso
+        ? 'La data scelta non è un giorno di lezione per questa classe (controlla i giorni della settimana o un periodo di vacanza). Scegli un altro giorno o lascia la data su "auto".'
+        : 'non è un giorno di lezione';
+    case 'spazio-durata':
+      return esteso
+        ? 'Da questa data non ci sono abbastanza lezioni disponibili per l\'intera durata della verifica prima della fine del periodo.'
+        : 'lezioni insufficienti da qui';
+    case 'spazio-dopo-modulo':
+      return esteso
+        ? 'Non ci sono abbastanza lezioni dopo il modulo per collocare la verifica entro la fine del periodo. Allunga il periodo o riduci le lezioni.'
+        : 'niente spazio dopo il modulo';
+    default:
+      return esteso ? 'La verifica non è collocabile nel periodo indicato.' : 'non collocabile';
+  }
+}
+
 // Assegna i moduli in sequenza sulle lezioni disponibili.
 // Ogni verifica ha una data propria (fissata dall'utente o proposta automaticamente
 // subito dopo il suo modulo). Le verifiche attive che "occupano lezioni" riservano
@@ -591,12 +612,12 @@ function calcolaPianificazione(piano){
   function riservaDaData(iso, durata){
     const start = indiceLezione[iso];
     const indici = [];
-    if(start == null){ return { indici, fuori:true }; }
+    if(start == null){ return { indici, fuori:true, motivo:'non-lezione' }; }
     let count = 0;
     for(let i = start; i < lezioni.length && count < durata; i++){
       indici.push(i); count++;
     }
-    return { indici, fuori: indici.length < durata };
+    return { indici, fuori: indici.length < durata, motivo: indici.length < durata ? 'spazio-durata' : null };
   }
 
   piano.moduli.forEach(m => {
@@ -653,10 +674,11 @@ function calcolaPianificazione(piano){
       const occupano = attiva && v.occupaLezioni !== false;
       let indici = [];
       let fuori = false;
+      let motivo = null;
 
       if(v.data){
         const r = riservaDaData(v.data, durata);
-        indici = r.indici; fuori = r.fuori;
+        indici = r.indici; fuori = r.fuori; motivo = r.motivo;
       } else {
         let count = 0;
         for(let i = ultimoIdx + 1; i < lezioni.length && count < durata; i++){
@@ -665,6 +687,7 @@ function calcolaPianificazione(piano){
           if(occupano) riservate[i] = true;
         }
         fuori = indici.length < durata;
+        if(fuori) motivo = 'spazio-dopo-modulo';
         if(indici.length) ultimoIdx = Math.max(ultimoIdx, indici[indici.length-1]);
         // dopo una verifica automatica, il cursore dei moduli riparte da lì
         cursore = Math.max(cursore, (indici.length ? indici[indici.length-1] : ultimoIdx) + 1);
@@ -678,7 +701,8 @@ function calcolaPianificazione(piano){
         date: indici.map(i => lezioni[i]),
         attiva,
         dataAutomatica: !v.data,
-        fuoriPeriodo: fuori
+        fuoriPeriodo: fuori,
+        motivoProblema: motivo
       });
     });
   });
@@ -1007,7 +1031,7 @@ function renderTabellaModuli(piano){
         ${v.data
           ? `<button class="link-auto" data-azione="auto" title="Torna alla data automatica">↺ auto</button>`
           : `<span class="tag-auto" title="Data proposta automaticamente dopo il modulo">auto: ${dataProposta ? formattaDataBreve(dataProposta) : '—'}</span>`}
-        ${pianificata && pianificata.fuoriPeriodo ? '<span class="avviso-inline">⚠︎ oltre il periodo</span>' : ''}
+        ${pianificata && pianificata.fuoriPeriodo ? '<span class="avviso-inline" title="'+messaggioProblemaVerifica(pianificata.motivoProblema, true)+'">⚠︎ '+messaggioProblemaVerifica(pianificata.motivoProblema, false)+'</span>' : ''}
         <button class="azione-icona elimina" title="Rimuovi verifica">✕</button>
       `;
       rigaV.querySelector('[data-campo=attiva]').addEventListener('change', e=>{ v.attiva = e.target.checked; salvaDati(); renderTabellaModuli(piano); renderGanttOnly(); });
