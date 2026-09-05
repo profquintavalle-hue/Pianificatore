@@ -295,6 +295,7 @@
   .pannello-moduli-verifica{ position:absolute; z-index:20; top:120%; left:0; width:290px; max-height:260px; overflow:auto;
     background:#fff; border:1px solid var(--bordo); border-radius:8px; padding:8px 10px;
     box-shadow:0 6px 18px rgba(90,70,40,.16); display:flex; flex-direction:column; gap:4px; }
+  .pannello-moduli-verifica[hidden]{ display:none; }
   .riga-modulo-verifica{ display:flex; align-items:flex-start; gap:6px; font-size:0.78rem; line-height:1.3; }
   .riga-verifica-inline .badge-verifica{ color:var(--ambra); font-weight:700; }
   .riga-verifica-inline .data-verifica{ font-weight:600; font-size:0.76rem; white-space:nowrap; }
@@ -1161,6 +1162,12 @@ function renderFestivita(piano){
   });
 }
 
+if(!window._chiudiPannelliModuli){
+  window._chiudiPannelliModuli = true;
+  document.addEventListener('click', ()=>{
+    document.querySelectorAll('.pannello-moduli-verifica').forEach(x => x.hidden = true);
+  });
+}
 function renderTabellaModuli(piano){
   const corpo = document.getElementById('corpo-tabella-moduli');
   corpo.innerHTML = '';
@@ -1236,7 +1243,13 @@ function renderTabellaModuli(piano){
       `;
       const btnModuli = rigaV.querySelector('[data-azione=moduli]');
       const panModuli = rigaV.querySelector('.pannello-moduli-verifica');
-      btnModuli.addEventListener('click', ()=>{ panModuli.hidden = !panModuli.hidden; });
+      btnModuli.addEventListener('click', e=>{
+        e.stopPropagation();
+        const apriamo = panModuli.hidden;
+        document.querySelectorAll('.pannello-moduli-verifica').forEach(x => x.hidden = true);
+        panModuli.hidden = !apriamo;
+      });
+      panModuli.addEventListener('click', e=> e.stopPropagation());
       panModuli.addEventListener('change', e=>{
         if(e.target.tagName !== 'INPUT') return;
         const sel = [...panModuli.querySelectorAll('input:checked:not(:disabled)')].map(i=>i.value);
