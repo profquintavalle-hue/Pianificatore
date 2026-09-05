@@ -1213,6 +1213,10 @@ function renderTabellaModuli(piano){
     (m.verifiche||[]).forEach((v, j)=>{
       const pianificata = calcolo.verifiche.find(pv => pv.verifica === v);
       const dataProposta = pianificata && pianificata.date.length ? pianificata.date[0] : '';
+      const dataPropostaFine = pianificata && pianificata.date.length ? pianificata.date[pianificata.date.length-1] : '';
+      const intervalloProposto = dataProposta
+        ? formattaDataBreve(dataProposta) + (dataPropostaFine && dataPropostaFine !== dataProposta ? ' – ' + formattaDataBreve(dataPropostaFine) : '')
+        : '—';
       const attiva = v.attiva !== false;
       const rigaV = document.createElement('div');
       rigaV.className = 'riga-verifica-inline' + (attiva ? '' : ' non-attiva');
@@ -1242,8 +1246,8 @@ function renderTabellaModuli(piano){
           <input type="date" data-campo="data" value="${v.data || ''}" min="${piano.dataInizio}" max="${piano.dataFine}">
         </label>
         ${v.data
-          ? `<button class="link-auto" data-azione="auto" title="Torna alla data automatica">↺ auto</button>`
-          : `<span class="tag-auto" title="Data proposta automaticamente dopo il modulo">auto: ${dataProposta ? formattaDataBreve(dataProposta) : '—'}</span>`}
+          ? `${dataPropostaFine && dataPropostaFine !== v.data ? `<span class="tag-auto" title="Fine della verifica, calcolata sulle lezioni indicate">fino al ${formattaDataBreve(dataPropostaFine)}</span>` : ''}<button class="link-auto" data-azione="auto" title="Torna alla data automatica">↺ auto</button>`
+          : `<span class="tag-auto" title="Data proposta automaticamente dopo il modulo">auto: ${intervalloProposto}</span>`}
         ${pianificata && pianificata.fuoriPeriodo ? '<span class="avviso-inline" title="'+messaggioProblemaVerifica(pianificata.motivoProblema, true)+'">⚠︎ '+messaggioProblemaVerifica(pianificata.motivoProblema, false)+'</span>' : ''}
         <button class="azione-icona elimina" title="Rimuovi verifica">✕</button>
       `;
