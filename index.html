@@ -310,6 +310,15 @@
   .btn-aggiungi-verifica-inline:hover{ border-color:var(--ambra); color:var(--ambra); }
 
   .lista-eccezioni{ display:flex; flex-direction:column; gap:8px; margin-bottom:12px; }
+  .riga-precompila{ display:flex; align-items:center; flex-wrap:wrap; gap:8px; font-size:0.83rem; margin-bottom:6px; }
+  .riga-precompila input[type=number]{ width:70px; padding:6px 8px; border:1px solid var(--bordo); border-radius:6px; }
+  .riga-precompila input[type=text]{ width:150px; padding:6px 8px; border:1px solid var(--bordo); border-radius:6px; font-family:inherit; }
+  .riga-precompila .sep{ margin-left:-4px; opacity:.65; }
+  .riga-precompila .chk{ display:flex; align-items:center; gap:4px; opacity:.8; }
+  .btn-precompila{ padding:6px 12px; border:1px solid var(--teal); border-radius:6px; background:#fff; color:var(--teal);
+                   font-family:inherit; font-size:0.83rem; font-weight:600; cursor:pointer; }
+  .btn-precompila:hover{ background:var(--teal); color:#fff; }
+  .nota-precompila{ font-size:0.75rem; opacity:.65; margin-bottom:8px; }
   .riga-eccezione{ display:flex; align-items:center; gap:10px; font-size:0.83rem; }
   .riga-eccezione input[type=date]{ padding:6px 8px; border:1px solid var(--bordo); border-radius:6px; }
   .riga-eccezione input[type=text]{ flex:1; padding:6px 8px; border:1px solid var(--bordo); border-radius:6px; font-family:inherit; }
@@ -490,6 +499,7 @@ function salvaDati(){
 }
 
 let stato = caricaDati();
+if(!stato.festeConfig) stato.festeConfig = { anno: (new Date().getMonth() >= 8 ? new Date().getFullYear() : new Date().getFullYear()-1), nome:'San Saturnino', giorno:30, mese:10 };
 // Promemoria backup: confrontiamo l'ultima modifica con l'ultimo salvataggio su file.
 let ultimaModifica = 0;   // impostata da salvaDati()
 let ultimoBackup = 0;     // impostata da esportaBackup()
@@ -552,6 +562,46 @@ function giornoSettimanaLunBase(d){
   // JS: 0=domenica..6=sabato -> convertiamo a 0=lunedì..6=domenica
   return (d.getDay() + 6) % 7;
 }
+function pasquaData(y){
+  const a=y%19,b=Math.floor(y/100),c=y%100,d=Math.floor(b/4),e=b%4,
+        f=Math.floor((b+8)/25),g=Math.floor((b-f+1)/3),h=(19*a+b-d-g+15)%30,
+        i=Math.floor(c/4),k=c%4,l=(32+2*e+2*i-h-k)%7,m=Math.floor((a+11*h+22*l)/451),
+        mese=Math.floor((h+l-7*m+114)/31),giorno=((h+l-7*m+114)%31)+1;
+  return new Date(y, mese-1, giorno);
+}
+function dataPiu(d, n){ const x=new Date(d); x.setDate(x.getDate()+n); return x; }
+function dataISO(y,m,g){ return toISO(new Date(y, m-1, g)); }
+
+// Genera le festività di un anno scolastico che parte a settembre di annoInizio.
+// Le voci generate sono marcate auto:true, così una nuova precompilazione le
+// sostituisce senza toccare i ponti aggiunti a mano.
+function generaFestivita(annoInizio, patrono){
+  const y = annoInizio, y2 = annoInizio + 1;
+  const P = pasquaData(y2);
+  const mesePat = Number(patrono.mese)||10, giornoPat = Number(patrono.giorno)||30;
+  const annoPat = mesePat >= 9 ? y : y2;
+  const v = [
+    ['San Francesco d\'Assisi', dataISO(y,10,4), dataISO(y,10,4)],
+    [(patrono.nome||'Santo patrono'), dataISO(annoPat,mesePat,giornoPat), dataISO(annoPat,mesePat,giornoPat)],
+    ['Ognissanti', dataISO(y,11,1), dataISO(y,11,1)],
+    ['Immacolata', dataISO(y,12,8), dataISO(y,12,8)],
+    ['Vacanze di Natale', dataISO(y,12,23), dataISO(y2,1,6)],
+    ['Martedì grasso', toISO(dataPiu(P,-47)), toISO(dataPiu(P,-47))],
+    ['Vacanze di Pasqua', toISO(dataPiu(P,-3)), toISO(dataPiu(P,1))],
+    ['Anniversario della Liberazione', dataISO(y2,4,25), dataISO(y2,4,25)],
+    ['Sa die de sa Sardigna', dataISO(y2,4,28), dataISO(y2,4,28)],
+    ['Festa del Lavoro', dataISO(y2,5,1), dataISO(y2,5,1)],
+    ['Festa della Repubblica', dataISO(y2,6,2), dataISO(y2,6,2)]
+  ];
+  return v.map(x => ({ etichetta:x[0], da:x[1], a:x[2], auto:true }));
+}
+
+// Sostituisce nel piano le festività generate, conservando quelle manuali.
+function precompilaFestivitaPiano(piano, annoInizio, patrono){
+  const manuali = piano.festivita.filter(f => !f.auto);
+  piano.festivita = generaFestivita(annoInizio, patrono).concat(manuali);
+}
+
 function inFestivita(iso, festivita){
   return festivita.some(f => iso >= f.da && iso <= f.a);
 }
@@ -806,6 +856,18 @@ function renderMain(){
       </div>
       <div class="campo" style="margin-top:6px;">
         <label>Periodi di vacanza / sospensione didattica</label>
+        <div class="riga-precompila">
+          <span>Anno scolastico</span>
+          <input type="number" id="feste-anno" value="${stato.festeConfig.anno}" min="2000" max="2100">
+          <span class="sep">/${Number(stato.festeConfig.anno)+1}</span>
+          <span>patrono</span>
+          <input type="text" id="feste-patrono" value="${escapeHtml(stato.festeConfig.nome)}">
+          <input type="number" id="feste-giorno" value="${stato.festeConfig.giorno}" min="1" max="31" title="giorno">
+          <input type="number" id="feste-mese" value="${stato.festeConfig.mese}" min="1" max="12" title="mese">
+          <button class="btn-precompila" id="btn-precompila-festivita">Precompila festività</button>
+          <label class="chk"><input type="checkbox" id="feste-tutti"> tutte le classi</label>
+        </div>
+        <div class="nota-precompila">Calcola da sé Pasqua, martedì grasso, feste nazionali, Sa die e patrono. I periodi che aggiungi a mano (ponti del collegio) non vengono toccati.</div>
         <div id="lista-festivita" class="lista-eccezioni"></div>
         <button class="btn-aggiungi" id="btn-aggiungi-festivita">+ aggiungi periodo di vacanza</button>
       </div>
@@ -863,6 +925,23 @@ function renderMain(){
   });
 
   renderFestivita(piano);
+  document.getElementById('btn-precompila-festivita').addEventListener('click', ()=>{
+    const anno = parseInt(document.getElementById('feste-anno').value);
+    if(isNaN(anno)){ alert('Indica l\'anno di partenza (per il 2026/27 scrivi 2026).'); return; }
+    const patrono = {
+      nome: document.getElementById('feste-patrono').value.trim(),
+      giorno: document.getElementById('feste-giorno').value,
+      mese: document.getElementById('feste-mese').value
+    };
+    stato.festeConfig = { anno: anno, nome: patrono.nome, giorno: patrono.giorno, mese: patrono.mese };
+    const tutti = document.getElementById('feste-tutti').checked;
+    const bersagli = tutti ? stato.piani : [piano];
+    bersagli.forEach(p => precompilaFestivitaPiano(p, anno, patrono));
+    salvaDati(); render();
+    mostraNotaBackup(tutti
+      ? 'Festività ' + anno + '/' + (anno+1) + ' inserite in tutte le classi.'
+      : 'Festività ' + anno + '/' + (anno+1) + ' inserite in questa classe.', 'ok');
+  });
   document.getElementById('btn-aggiungi-festivita').addEventListener('click', ()=>{
     piano.festivita.push({ da: piano.dataInizio, a: piano.dataInizio, etichetta:'Vacanza' });
     salvaDati(); render();
