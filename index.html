@@ -1094,9 +1094,9 @@ function esportaCronoProgrammaWord(piano, calcolo){
     rtf += rigaTabella([
       r.modulo.nome,
       String(r.lezioniPreviste),
-      r.lezioniVerifica > 0 ? String(r.lezioniVerifica) : '\\endash',
+      r.lezioniVerifica > 0 ? String(r.lezioniVerifica) : '\u2013',
       String(r.lezioniPreviste + r.lezioniVerifica),
-      formattaDataBreve(r.dataInizio) + ' \\endash ' + formattaDataBreve(r.dataFineTotale) + (r.overflow ? ' (lezioni insufficienti)' : '')
+      formattaDataBreve(r.dataInizio) + ' \u2013 ' + formattaDataBreve(r.dataFineTotale) + (r.overflow ? ' (lezioni insufficienti)' : '')
     ]);
   });
 
@@ -1113,9 +1113,9 @@ function esportaCronoProgrammaWord(piano, calcolo){
       verificheOrdinate.forEach(pv=>{
         const tipo = (pv.verifica.tipo==='orale'?'Orale':'Scritta') + (pv.verifica.qualifica==='recupero'?' (recupero)':'');
         rtf += rigaTabella([
-          pv.modulo.nome,
+          moduliDellaVerifica(pv.verifica, pv.modulo, piano).join(', '),
           tipo,
-          formattaDataBreve(pv.date[0]) + (pv.date.length>1 ? ' \\endash ' + formattaDataBreve(pv.date[pv.date.length-1]) : '')
+          formattaDataBreve(pv.date[0]) + (pv.date.length>1 ? ' \u2013 ' + formattaDataBreve(pv.date[pv.date.length-1]) : '')
         ], false, larghezzeVerifiche);
       });
     }
