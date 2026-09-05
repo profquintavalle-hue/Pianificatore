@@ -320,6 +320,9 @@
   .btn-aggiungi-verifica-inline:hover{ border-color:var(--ambra); color:var(--ambra); }
 
   .lista-eccezioni{ display:flex; flex-direction:column; gap:8px; margin-bottom:12px; }
+  .numero-modulo{ display:inline-block; min-width:22px; margin-right:8px; text-align:right;
+    font-size:0.78rem; font-weight:700; color:var(--ambra); vertical-align:middle; }
+  .input-nome-modulo{ width:calc(100% - 34px); }
   .nota-verifica{ display:block; font-size:0.68rem; opacity:.6; }
   .riga-etichetta{ display:flex; align-items:center; gap:8px; margin:-4px 0 12px; flex-wrap:wrap; }
   .riga-etichetta select{ padding:6px 10px; border:1px solid var(--bordo); border-radius:6px;
@@ -1090,9 +1093,9 @@ function esportaCronoProgrammaWord(piano, calcolo){
   rtf += '{\\pard\\b\\fs32 Crono programma \\emdash ' + rtfEscape(piano.nome) + '\\par}\n';
   rtf += '{\\pard\\fs18\\sa240 Periodo: ' + rtfEscape(formattaDataBreve(piano.dataInizio)) + ' \\endash ' + rtfEscape(formattaDataBreve(piano.dataFine)) + '   \\emdash   ' + calcolo.lezioniTotali + ' lezioni disponibili nel periodo\\par}\n';
   rtf += rigaTabella(['Modulo','Lezioni spiegazione','Lezioni verifica','Totale','Periodo previsto'], true);
-  calcolo.righe.forEach(r=>{
+  calcolo.righe.forEach((r, i)=>{
     rtf += rigaTabella([
-      r.modulo.nome,
+      (i+1) + '. ' + r.modulo.nome,
       String(r.lezioniPreviste),
       r.lezioniVerifica > 0 ? String(r.lezioniVerifica) : '\u2013',
       String(r.lezioniPreviste + r.lezioniVerifica),
@@ -1113,7 +1116,10 @@ function esportaCronoProgrammaWord(piano, calcolo){
       verificheOrdinate.forEach(pv=>{
         const tipo = (pv.verifica.tipo==='orale'?'Orale':'Scritta') + (pv.verifica.qualifica==='recupero'?' (recupero)':'');
         rtf += rigaTabella([
-          moduliDellaVerifica(pv.verifica, pv.modulo, piano).join(', '),
+          piano.moduli.reduce((acc, mm, k) => {
+            const inclusi = mm.id === pv.modulo.id || (pv.verifica.moduli||[]).includes(mm.id);
+            return inclusi ? acc.concat((k+1) + '. ' + mm.nome) : acc;
+          }, []).join('  '),
           tipo,
           formattaDataBreve(pv.date[0]) + (pv.date.length>1 ? ' \u2013 ' + formattaDataBreve(pv.date[pv.date.length-1]) : '')
         ], false, larghezzeVerifiche);
@@ -1180,7 +1186,7 @@ function renderTabellaModuli(piano){
         <button class="azione-icona" data-azione="su" title="Sposta su">↑</button>
         <button class="azione-icona" data-azione="giu" title="Sposta giù">↓</button>
       </td>
-      <td><input type="text" value="${escapeHtml(m.nome)}" data-campo="nome"></td>
+      <td><span class="numero-modulo">${i+1}</span><input type="text" value="${escapeHtml(m.nome)}" data-campo="nome" class="input-nome-modulo"></td>
       <td><input type="number" min="1" value="${m.lezioni}" data-campo="lezioni"></td>
       <td style="font-size:0.8rem; color:var(--inchiostro-tenue); white-space:nowrap;">
         ${riga.lezioniVerifica > 0
@@ -1218,7 +1224,7 @@ function renderTabellaModuli(piano){
         <span class="moduli-verifica">
           <button class="btn-moduli-verifica" data-azione="moduli" title="Su quali moduli verte questa verifica">${escapeHtml(moduliDellaVerifica(v, m, piano).join(', '))} ▾</button>
           <span class="pannello-moduli-verifica" hidden>
-            ${piano.moduli.map(mm => `<label class="riga-modulo-verifica"><input type="checkbox" value="${mm.id}" ${mm.id===m.id?'checked disabled':''} ${(v.moduli||[]).includes(mm.id)?'checked':''}> ${escapeHtml(mm.nome)}</label>`).join('')}
+            ${piano.moduli.map((mm, k) => `<label class="riga-modulo-verifica"><input type="checkbox" value="${mm.id}" ${mm.id===m.id?'checked disabled':''} ${(v.moduli||[]).includes(mm.id)?'checked':''}> ${k+1}. ${escapeHtml(mm.nome)}</label>`).join('')}
           </span>
         </span>
         <select data-campo="tipo">
