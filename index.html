@@ -310,6 +310,10 @@
   .btn-aggiungi-verifica-inline:hover{ border-color:var(--ambra); color:var(--ambra); }
 
   .lista-eccezioni{ display:flex; flex-direction:column; gap:8px; margin-bottom:12px; }
+  .riga-etichetta{ display:flex; align-items:center; gap:8px; margin:-4px 0 12px; flex-wrap:wrap; }
+  .riga-etichetta select{ padding:6px 10px; border:1px solid var(--bordo); border-radius:6px;
+                          font-family:inherit; font-size:0.83rem; background:#fff; color:inherit; }
+  .nota-etichetta{ font-size:0.75rem; opacity:.6; }
   .blocco-incolla{ margin-top:10px; border:1px dashed var(--bordo); border-radius:8px; padding:10px 12px; }
   .blocco-incolla summary{ cursor:pointer; font-size:0.83rem; font-weight:600; color:var(--teal); }
   .blocco-incolla textarea{ width:100%; padding:8px 10px; border:1px solid var(--bordo); border-radius:6px;
@@ -483,6 +487,8 @@
 
 <script>
 const CHIAVE_STORAGE = 'pianificatore_moduli_dati_v1';
+const LETTERE = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
+const MATERIE = ['Filosofia','Storia','Educazione civica'];
 const GIORNI_LABEL = ['Lun','Mar','Mer','Gio','Ven','Sab','Dom'];
 const MESI_LABEL = ['gennaio','febbraio','marzo','aprile','maggio','giugno','luglio','agosto','settembre','ottobre','novembre','dicembre'];
 const PALETTE_BARRE = ['#3E7C74','#B8863B','#7C8A4E','#5B7BA6','#8B6BAA','#A6633E'];
@@ -512,6 +518,7 @@ function nuovoPiano(){
   const p = {
     id: idCasuale(),
     nome: 'Nuova materia/classe',
+    anno: '', sezione: '', materia: '',
     dataInizio: oggiISO(),
     dataFine: (function(){ const d=new Date(); d.setMonth(d.getMonth()+9); return d.toISOString().slice(0,10); })(),
     giorni: [1,3], // lun, mer di default (0=lun..6=dom)
@@ -840,6 +847,21 @@ function renderMain(){
     <div class="intestazione-piano">
       <input type="text" id="input-nome-piano" value="${escapeHtml(piano.nome)}">
     </div>
+    <div class="riga-etichetta">
+      <select id="sel-anno">
+        <option value="">anno</option>
+        ${[3,4,5].map(a=>`<option value="${a}" ${piano.anno==a?'selected':''}>${a}ª</option>`).join('')}
+      </select>
+      <select id="sel-sezione">
+        <option value="">sez.</option>
+        ${LETTERE.map(l=>`<option value="${l}" ${piano.sezione===l?'selected':''}>${l}</option>`).join('')}
+      </select>
+      <select id="sel-materia">
+        <option value="">materia</option>
+        ${MATERIE.map(m=>`<option value="${m}" ${piano.materia===m?'selected':''}>${m}</option>`).join('')}
+      </select>
+      <span class="nota-etichetta">compongono il nome del piano; puoi comunque scriverlo a mano sopra</span>
+    </div>
     <div class="sotto-intestazione">${formattaDataBreve(piano.dataInizio)} → ${formattaDataBreve(piano.dataFine)} &middot; ${calcolo.lezioniTotali} lezioni disponibili nel periodo</div>
 
     <details class="pannello" id="pannello-impostazioni">
@@ -923,6 +945,21 @@ function renderMain(){
 
   // eventi impostazioni
   document.getElementById('input-nome-piano').addEventListener('input', e=>{ piano.nome=e.target.value; salvaDati(); renderSidebar(); });
+  function aggiornaEtichetta(){
+    const parti = [];
+    if(piano.anno && piano.sezione) parti.push(piano.anno + piano.sezione);
+    else if(piano.anno) parti.push(piano.anno + 'ª');
+    else if(piano.sezione) parti.push(piano.sezione);
+    if(piano.materia) parti.push(piano.materia);
+    if(parti.length){
+      piano.nome = parti.join(' ');
+      document.getElementById('input-nome-piano').value = piano.nome;
+    }
+    salvaDati(); renderSidebar();
+  }
+  document.getElementById('sel-anno').addEventListener('change', e=>{ piano.anno=e.target.value; aggiornaEtichetta(); });
+  document.getElementById('sel-sezione').addEventListener('change', e=>{ piano.sezione=e.target.value; aggiornaEtichetta(); });
+  document.getElementById('sel-materia').addEventListener('change', e=>{ piano.materia=e.target.value; aggiornaEtichetta(); });
   document.getElementById('input-data-inizio').addEventListener('change', e=>{ piano.dataInizio=e.target.value; salvaDati(); render(); });
   document.getElementById('input-data-fine').addEventListener('change', e=>{ piano.dataFine=e.target.value; salvaDati(); render(); });
 
