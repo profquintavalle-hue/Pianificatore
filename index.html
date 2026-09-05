@@ -310,6 +310,10 @@
   .btn-aggiungi-verifica-inline:hover{ border-color:var(--ambra); color:var(--ambra); }
 
   .lista-eccezioni{ display:flex; flex-direction:column; gap:8px; margin-bottom:12px; }
+  .blocco-incolla{ margin-top:10px; border:1px dashed var(--bordo); border-radius:8px; padding:10px 12px; }
+  .blocco-incolla summary{ cursor:pointer; font-size:0.83rem; font-weight:600; color:var(--teal); }
+  .blocco-incolla textarea{ width:100%; padding:8px 10px; border:1px solid var(--bordo); border-radius:6px;
+                            font-family:inherit; font-size:0.83rem; resize:vertical; margin-bottom:8px; }
   .riga-precompila{ display:flex; align-items:center; flex-wrap:wrap; gap:8px; font-size:0.83rem; margin-bottom:6px; }
   .riga-precompila input[type=number]{ width:70px; padding:6px 8px; border:1px solid var(--bordo); border-radius:6px; }
   .riga-precompila input[type=text]{ width:150px; padding:6px 8px; border:1px solid var(--bordo); border-radius:6px; font-family:inherit; }
@@ -887,6 +891,17 @@ function renderMain(){
         <tbody id="corpo-tabella-moduli"></tbody>
       </table>
       <button class="btn-aggiungi" id="btn-aggiungi-modulo">+ aggiungi modulo</button>
+      <details class="blocco-incolla" id="blocco-incolla">
+        <summary>Incolla un elenco di moduli</summary>
+        <div class="nota-precompila">Uno per riga. Trattini e numerazione vengono ripuliti da soli. Per indicare le lezioni scrivi il numero dopo una barra verticale: <em>Aristotele | 6</em></div>
+        <textarea id="testo-moduli" rows="8" placeholder="Il problema della natura nei presocratici&#10;Socrate e i sofisti | 5&#10;Platone | 8"></textarea>
+        <div class="riga-precompila">
+          <span>Lezioni per modulo se non indicate</span>
+          <input type="number" id="lezioni-default" value="4" min="1" max="60">
+          <button class="btn-precompila" id="btn-importa-moduli">Aggiungi come moduli</button>
+          <label class="chk"><input type="checkbox" id="sostituisci-moduli"> sostituisci i moduli esistenti</label>
+        </div>
+      </details>
     </details>
 
     <details class="pannello" id="pannello-eccezioni">
@@ -948,6 +963,29 @@ function renderMain(){
   });
 
   renderTabellaModuli(piano);
+  document.getElementById('btn-importa-moduli').addEventListener('click', ()=>{
+    const testo = document.getElementById('testo-moduli').value;
+    const def = parseInt(document.getElementById('lezioni-default').value) || 4;
+    const nuovi = testo.split('\n')
+      .map(r => r.replace(/^[\s\u2022\-\u2013\u2014*]+/, '').replace(/^\d+[.)\]]\s*/, '').trim())
+      .filter(r => r.length > 0)
+      .map(r => {
+        const parti = r.split('|');
+        const nome = parti[0].trim();
+        const n = parti.length > 1 ? parseInt(parti[1]) : NaN;
+        return { id: idCasuale(), nome: nome, lezioni: isNaN(n) ? def : n, verifiche: [] };
+      });
+    if(!nuovi.length){ alert('Non ho trovato righe da importare.'); return; }
+    if(document.getElementById('sostituisci-moduli').checked){
+      if(!confirm('Sostituisco i ' + piano.moduli.length + ' moduli esistenti di questa classe con i ' + nuovi.length + ' nuovi? Le verifiche collegate ai vecchi moduli andranno perse.')) return;
+      piano.moduli = nuovi;
+    } else {
+      piano.moduli = piano.moduli.concat(nuovi);
+    }
+    document.getElementById('testo-moduli').value = '';
+    salvaDati(); render();
+    mostraNotaBackup(nuovi.length + ' moduli inseriti.', 'ok');
+  });
   document.getElementById('btn-aggiungi-modulo').addEventListener('click', ()=>{
     piano.moduli.push({ id: idCasuale(), nome:'Nuovo modulo', lezioni:4, verifiche: [] });
     salvaDati(); render();
