@@ -287,6 +287,15 @@
     font-size:0.78rem; text-align:center; font-family:inherit;
   }
   .riga-verifica-inline .mini-label{ display:inline-flex; align-items:center; gap:4px; white-space:nowrap; }
+  .moduli-verifica{ position:relative; }
+  .btn-moduli-verifica{ max-width:260px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+    padding:5px 9px; border:1px solid var(--bordo); border-radius:6px; background:#fff; color:inherit;
+    font-family:inherit; font-size:0.78rem; cursor:pointer; vertical-align:middle; }
+  .btn-moduli-verifica:hover{ border-color:var(--ambra); }
+  .pannello-moduli-verifica{ position:absolute; z-index:20; top:120%; left:0; width:290px; max-height:260px; overflow:auto;
+    background:#fff; border:1px solid var(--bordo); border-radius:8px; padding:8px 10px;
+    box-shadow:0 6px 18px rgba(90,70,40,.16); display:flex; flex-direction:column; gap:4px; }
+  .riga-modulo-verifica{ display:flex; align-items:flex-start; gap:6px; font-size:0.78rem; line-height:1.3; }
   .riga-verifica-inline .badge-verifica{ color:var(--ambra); font-weight:700; }
   .riga-verifica-inline .data-verifica{ font-weight:600; font-size:0.76rem; white-space:nowrap; }
   .riga-verifica-inline input[type=date]{ padding:3px 5px; border:1px solid var(--bordo); border-radius:5px; font-size:0.76rem; font-family:inherit; }
@@ -310,6 +319,7 @@
   .btn-aggiungi-verifica-inline:hover{ border-color:var(--ambra); color:var(--ambra); }
 
   .lista-eccezioni{ display:flex; flex-direction:column; gap:8px; margin-bottom:12px; }
+  .nota-verifica{ display:block; font-size:0.68rem; opacity:.6; }
   .riga-etichetta{ display:flex; align-items:center; gap:8px; margin:-4px 0 12px; flex-wrap:wrap; }
   .riga-etichetta select{ padding:6px 10px; border:1px solid var(--bordo); border-radius:6px;
                           font-family:inherit; font-size:0.83rem; background:#fff; color:inherit; }
@@ -640,10 +650,20 @@ function calcolaLezioniDisponibili(piano){
   return risultato;
 }
 
-function etichettaVerifica(v, modulo){
+// Nomi dei moduli su cui verte la verifica: quello a cui è agganciata più
+// gli eventuali altri selezionati (in ordine di piano, anche non contigui).
+function moduliDellaVerifica(v, modulo, piano){
+  const extra = Array.isArray(v.moduli) ? v.moduli : [];
+  const nomi = [];
+  (piano ? piano.moduli : [modulo]).forEach(m => {
+    if(m.id === modulo.id || extra.includes(m.id)) nomi.push(m.nome);
+  });
+  return nomi.length ? nomi : [modulo.nome];
+}
+function etichettaVerifica(v, modulo, piano){
   const tipo = v.tipo === 'orale' ? 'Orale' : 'Scritta';
   const qualifica = v.qualifica === 'recupero' ? 'di recupero' : 'sommativa';
-  return tipo + ' ' + qualifica + ' — ' + modulo.nome;
+  return tipo + ' ' + qualifica + ' — ' + moduliDellaVerifica(v, modulo, piano).join(', ');
 }
 
 // Messaggio chiaro sul perché una verifica non è collocabile.
@@ -734,7 +754,7 @@ function calcolaPianificazione(piano){
       dataInizio = dataFine = piano.dataInizio;
       ultimoIdx = -1;
     }
-    const riga = { modulo: m, dataInizio, dataFine, lezioniAssegnate: assegnate.length, lezioniPreviste: necessarie, lezioniVerifica: 0, overflow };
+    const riga = { modulo: m, dataInizio, dataFine, dataFineTotale: dataFine, lezioniAssegnate: assegnate.length, lezioniPreviste: necessarie, lezioniVerifica: 0, overflow };
     righe.push(riga);
 
     // verifiche del modulo: prima quelle a data automatica (collocate qui, in ordine),
@@ -771,10 +791,14 @@ function calcolaPianificazione(piano){
         const mancanti = durata - indici.length;
         if(mancanti > 0) overflowTotale += mancanti;
       }
+      if(indici.length){
+        const ultimaData = lezioni[indici[indici.length-1]];
+        if(ultimaData > riga.dataFineTotale) riga.dataFineTotale = ultimaData;
+      }
       verifichePianificate.push({
         verifica: v,
         modulo: m,
-        etichetta: etichettaVerifica(v, m),
+        etichetta: etichettaVerifica(v, m, piano),
         date: indici.map(i => lezioni[i]),
         attiva,
         dataAutomatica: !v.data,
@@ -1071,7 +1095,7 @@ function esportaCronoProgrammaWord(piano, calcolo){
       String(r.lezioniPreviste),
       r.lezioniVerifica > 0 ? String(r.lezioniVerifica) : '\\endash',
       String(r.lezioniPreviste + r.lezioniVerifica),
-      formattaDataBreve(r.dataInizio) + ' \\endash ' + formattaDataBreve(r.dataFine) + (r.overflow ? ' (lezioni insufficienti)' : '')
+      formattaDataBreve(r.dataInizio) + ' \\endash ' + formattaDataBreve(r.dataFineTotale) + (r.overflow ? ' (lezioni insufficienti)' : '')
     ]);
   });
 
@@ -1157,7 +1181,7 @@ function renderTabellaModuli(piano){
           : `${riga.lezioniPreviste}`}
       </td>
       <td style="font-size:0.78rem; color:${riga.overflow?'var(--ruggine)':'var(--inchiostro-tenue)'};">
-        ${formattaDataBreve(riga.dataInizio)} – ${formattaDataBreve(riga.dataFine)}${riga.overflow ? ' ⚠︎':''}
+        ${formattaDataBreve(riga.dataInizio)} – ${formattaDataBreve(riga.dataFineTotale)}${riga.dataFineTotale !== riga.dataFine ? '<span class="nota-verifica">verifica inclusa</span>' : ''}${riga.overflow ? ' ⚠︎':''}
       </td>
       <td><button class="azione-icona elimina" data-azione="elimina" title="Elimina modulo">✕</button></td>
     `;
@@ -1184,6 +1208,12 @@ function renderTabellaModuli(piano){
           <input type="checkbox" data-campo="attiva" ${attiva?'checked':''}> prevista
         </label>
         <span class="badge-verifica">✎</span>
+        <span class="moduli-verifica">
+          <button class="btn-moduli-verifica" data-azione="moduli" title="Su quali moduli verte questa verifica">${escapeHtml(moduliDellaVerifica(v, m, piano).join(', '))} ▾</button>
+          <span class="pannello-moduli-verifica" hidden>
+            ${piano.moduli.map(mm => `<label class="riga-modulo-verifica"><input type="checkbox" value="${mm.id}" ${mm.id===m.id?'checked disabled':''} ${(v.moduli||[]).includes(mm.id)?'checked':''}> ${escapeHtml(mm.nome)}</label>`).join('')}
+          </span>
+        </span>
         <select data-campo="tipo">
           <option value="scritta" ${v.tipo!=='orale'?'selected':''}>Scritta</option>
           <option value="orale" ${v.tipo==='orale'?'selected':''}>Orale</option>
@@ -1204,6 +1234,17 @@ function renderTabellaModuli(piano){
         ${pianificata && pianificata.fuoriPeriodo ? '<span class="avviso-inline" title="'+messaggioProblemaVerifica(pianificata.motivoProblema, true)+'">⚠︎ '+messaggioProblemaVerifica(pianificata.motivoProblema, false)+'</span>' : ''}
         <button class="azione-icona elimina" title="Rimuovi verifica">✕</button>
       `;
+      const btnModuli = rigaV.querySelector('[data-azione=moduli]');
+      const panModuli = rigaV.querySelector('.pannello-moduli-verifica');
+      btnModuli.addEventListener('click', ()=>{ panModuli.hidden = !panModuli.hidden; });
+      panModuli.addEventListener('change', e=>{
+        if(e.target.tagName !== 'INPUT') return;
+        const sel = [...panModuli.querySelectorAll('input:checked:not(:disabled)')].map(i=>i.value);
+        v.moduli = sel;
+        salvaDati();
+        btnModuli.textContent = moduliDellaVerifica(v, m, piano).join(', ') + ' ▾';
+        renderGanttOnly();
+      });
       rigaV.querySelector('[data-campo=attiva]').addEventListener('change', e=>{ v.attiva = e.target.checked; salvaDati(); renderTabellaModuli(piano); renderGanttOnly(); });
       rigaV.querySelector('[data-campo=tipo]').addEventListener('change', e=>{
         v.tipo = e.target.value;
@@ -1400,7 +1441,7 @@ function renderGantt(piano, calcolo){
     const rigaEl = document.createElement('div');
     rigaEl.className = 'riga-gantt';
     const dIn = parseISO(riga.dataInizio);
-    const dFi = parseISO(riga.dataFine);
+    const dFi = parseISO(riga.dataFineTotale);
     const leftPerc = Math.max(0, (dIn - inizio)/86400000 / totaleGiorni * 100);
     const widthPerc = Math.max(1.2, ((dFi - dIn)/86400000 + 1) / totaleGiorni * 100);
     const barra = document.createElement('div');
@@ -1409,7 +1450,7 @@ function renderGantt(piano, calcolo){
     barra.style.width = widthPerc + '%';
     barra.style.background = riga.overflow ? '' : PALETTE_BARRE[i % PALETTE_BARRE.length];
     barra.textContent = riga.modulo.nome + ' · ' + riga.lezioniAssegnate + '/' + riga.lezioniPreviste;
-    barra.title = riga.modulo.nome + ': ' + formattaDataBreve(riga.dataInizio) + ' – ' + formattaDataBreve(riga.dataFine) + (riga.overflow ? ' (lezioni insufficienti)':'');
+    barra.title = riga.modulo.nome + ': ' + formattaDataBreve(riga.dataInizio) + ' – ' + formattaDataBreve(riga.dataFineTotale) + (riga.dataFineTotale !== riga.dataFine ? ' (verifica inclusa)' : '') + (riga.overflow ? ' (lezioni insufficienti)':'');
     rigaEl.appendChild(barra);
     corpoGantt.appendChild(rigaEl);
   });
