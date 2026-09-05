@@ -356,6 +356,11 @@
     display:flex; gap:22px; margin-bottom:16px; font-size:0.82rem; color:var(--inchiostro-tenue);
   }
   .gantt-riepilogo b{ color:var(--inchiostro); }
+  .tab-riepilogo{ width:100%; border-collapse:collapse; margin:4px 0 16px; font-size:0.82rem; }
+  .tab-riepilogo th, .tab-riepilogo td{ padding:6px 10px; text-align:left; border-bottom:1px solid var(--bordo); }
+  .tab-riepilogo th{ font-size:0.72rem; text-transform:uppercase; letter-spacing:.05em; opacity:.7; }
+  .tab-riepilogo td:not(:first-child), .tab-riepilogo th:not(:first-child){ text-align:center; width:70px; }
+  .tab-riepilogo .riga-totale td{ font-weight:700; border-bottom:none; }
   .banner-sforo{
     background:rgba(179,73,42,0.1); border:1px solid rgba(179,73,42,0.35); color:var(--ruggine);
     border-radius:8px; padding:11px 15px; margin-bottom:14px; font-size:0.88rem; line-height:1.5;
@@ -904,6 +909,10 @@ function renderMain(){
           <input type="date" id="input-data-fine" value="${piano.dataFine}">
         </div>
         <div class="campo">
+          <label>Fine del primo quadrimestre</label>
+          <input type="date" id="input-fine-quadri" value="${piano.fineQuadrimestre || defaultFineQuadrimestre(piano)}">
+        </div>
+        <div class="campo">
           <label>Giorni di lezione nella settimana</label>
           <div class="giorni-settimana" id="giorni-settimana"></div>
         </div>
@@ -989,6 +998,7 @@ function renderMain(){
   document.getElementById('sel-sezione').addEventListener('change', e=>{ piano.sezione=e.target.value; aggiornaEtichetta(); });
   document.getElementById('sel-materia').addEventListener('change', e=>{ piano.materia=e.target.value; aggiornaEtichetta(); });
   document.getElementById('input-data-inizio').addEventListener('change', e=>{ piano.dataInizio=e.target.value; salvaDati(); render(); });
+  document.getElementById('input-fine-quadri').addEventListener('change', e=>{ piano.fineQuadrimestre=e.target.value; salvaDati(); render(); });
   document.getElementById('input-data-fine').addEventListener('change', e=>{ piano.dataFine=e.target.value; salvaDati(); render(); });
 
   const contGiorni = document.getElementById('giorni-settimana');
@@ -1124,6 +1134,20 @@ function esportaCronoProgrammaWord(piano, calcolo){
           formattaDataBreve(pv.date[0]) + (pv.date.length>1 ? ' \u2013 ' + formattaDataBreve(pv.date[pv.date.length-1]) : '')
         ], false, larghezzeVerifiche);
       });
+    }
+  }
+
+  {
+    const r = riepilogoVerifiche(piano, calcolo);
+    rtf += '{\\pard\\b\\fs26\\sb240 Riepilogo delle verifiche\\par}\n';
+    const larghezzeRiep = [4200, 1300, 1500, 1300, 1600];
+    rtf += rigaTabella(['Periodo','Totale','Scritte','Orali','Lezioni impiegate'], true, larghezzeRiep);
+    const riga = (nome, d) => rigaTabella([nome, String(d.totale), String(d.scritte), String(d.orali), String(d.lezioni)], false, larghezzeRiep);
+    rtf += riga('Primo quadrimestre (fino al ' + formattaDataBreve(r.limite) + ')', r.primo);
+    rtf += riga('Secondo quadrimestre', r.secondo);
+    rtf += riga('Totale anno', r.totale);
+    if(r.totale.recuperi > 0){
+      rtf += '{\\pard\\sa120\\fs18 Di cui verifiche di recupero: ' + r.totale.recuperi + '.\\par}\n';
     }
   }
 
@@ -1395,6 +1419,34 @@ function renderGanttOnly(){
 // Ricostruisce SEMPRE insieme riepilogo, avviso ed esportazione: qualunque modifica
 // (lezione saltata, vacanza, numero di lezioni di un modulo) passa da qui, così
 // il conteggio "lezioni mancanti" non resta mai disallineato dal resto.
+// 31 gennaio dell'anno in cui cade la fine delle lezioni.
+function defaultFineQuadrimestre(piano){
+  const anno = piano.dataFine ? Number(piano.dataFine.slice(0,4)) : new Date().getFullYear();
+  return anno + '-01-31';
+}
+
+// Conta le verifiche per quadrimestre, distinte per tipo.
+function riepilogoVerifiche(piano, calcolo){
+  const limite = piano.fineQuadrimestre || defaultFineQuadrimestre(piano);
+  const vuoto = ()=>({ scritte:0, orali:0, recuperi:0, lezioni:0, totale:0 });
+  const q = [vuoto(), vuoto()];
+  (calcolo.verifiche||[]).forEach(pv => {
+    if(!pv.date || !pv.date.length) return;
+    const i = pv.date[0] <= limite ? 0 : 1;
+    q[i].totale++;
+    q[i].lezioni += pv.date.length;
+    if(pv.verifica.tipo === 'orale') q[i].orali++; else q[i].scritte++;
+    if(pv.verifica.qualifica === 'recupero') q[i].recuperi++;
+  });
+  const tot = vuoto();
+  ['scritte','orali','recuperi','lezioni','totale'].forEach(k => tot[k] = q[0][k] + q[1][k]);
+  return { limite, primo:q[0], secondo:q[1], totale:tot };
+}
+
+function rigaRiepilogo(nome, d){
+  return `<tr><td>${nome}</td><td>${d.totale}</td><td>${d.scritte}</td><td>${d.orali}</td><td>${d.recuperi}</td><td>${d.lezioni}</td></tr>`;
+}
+
 function renderPannelloDiagramma(piano, calcolo){
   const cont = document.getElementById('pannello-diagramma');
   if(!cont) return;
@@ -1413,6 +1465,15 @@ function renderPannelloDiagramma(piano, calcolo){
     <div class="gantt-riepilogo">
       <div><b>${calcolo.righe.filter(r=>!r.overflow).length}</b>/${piano.moduli.length} moduli entro fine periodo</div>
     </div>
+    ${(()=>{ const r = riepilogoVerifiche(piano, calcolo); return `
+    <table class="tab-riepilogo">
+      <thead><tr><th>Verifiche</th><th>tot.</th><th>scritte</th><th>orali</th><th>recuperi</th><th>lezioni</th></tr></thead>
+      <tbody>
+        ${rigaRiepilogo('Primo quadrimestre (fino al ' + formattaDataBreve(r.limite) + ')', r.primo)}
+        ${rigaRiepilogo('Secondo quadrimestre', r.secondo)}
+        <tr class="riga-totale">${rigaRiepilogo('Totale anno', r.totale).replace('<tr>','').replace('</tr>','')}</tr>
+      </tbody>
+    </table>`; })()}
     <div class="gantt-scroll"><div class="gantt" id="gantt-area"></div></div>
     ${calcolo.overflowTotale>0 ? `<div class="avviso">Con il calendario attuale non ci sono abbastanza lezioni per completare tutti i moduli entro il ${formattaDataBreve(piano.dataFine)}. Valuta di allungare il periodo, aggiungere lezioni extra o ridurre le lezioni previste in qualche modulo.</div>` : ''}
   `;
