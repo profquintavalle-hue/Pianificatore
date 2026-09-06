@@ -1190,19 +1190,30 @@ function reportConGrafico(piano, calcolo){
     td:nth-child(2), td:nth-child(3){ width:70px; }
     .mesi{ display:flex; border-bottom:1px solid #ddd2c0; margin-left:190px; }
     .mese{ font-size:9px; text-transform:uppercase; color:#6b5d4d; border-left:1px solid #eee4d6; padding:2px 3px; }
-    .riga-g{ display:flex; align-items:center; height:20px; }
+    .riga-g{ display:flex; align-items:center; height:24px; }
     .etichetta-g{ width:190px; font-size:10px; padding-right:8px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-    .pista{ position:relative; flex:1; height:14px; background:#faf6ee; }
-    .barra{ position:absolute; top:0; height:14px; border-radius:3px; color:#fff; font-size:8px;
-            line-height:14px; padding:0 4px; overflow:hidden; white-space:nowrap; }
-    @media print{ body{ margin:12mm; } h2{ page-break-after:avoid; } table{ page-break-inside:auto; } tr{ page-break-inside:avoid; } }
+    .pista{ position:relative; flex:1; height:16px; background:#f3ece0; border-radius:3px; }
+    .barra{ position:absolute; top:0; height:16px; border-radius:3px; color:#fff; font-size:8.5px;
+            line-height:16px; padding:0 4px; overflow:hidden; white-space:nowrap; }
+    @page{ size:A4 landscape; margin:12mm; }
+    *{ -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important; }
+    @media print{
+      body{ margin:0; }
+      h2{ page-break-after:avoid; }
+      .grafico{ page-break-inside:avoid; page-break-after:always; }
+      table{ page-break-inside:auto; }
+      tr{ page-break-inside:avoid; }
+      thead{ display:table-header-group; }
+    }
   </style></head><body>
     <h1>Programma e calendario — ${escapeHtml(piano.nome)}</h1>
     <div class="sotto">${formattaDataBreve(piano.dataInizio)} – ${formattaDataBreve(piano.dataFine)} · ${calcolo.lezioniTotali} lezioni nel periodo</div>
 
-    <h2>Scansione temporale</h2>
-    <div class="mesi">${mesi}</div>
-    ${barre}
+    <div class="grafico">
+      <h2>Scansione temporale</h2>
+      <div class="mesi">${mesi}</div>
+      ${barre}
+    </div>
 
     <h2>Moduli</h2>
     <table><thead><tr><th>Modulo</th><th>Lezioni</th><th>Verifica</th><th>Periodo</th></tr></thead><tbody>${righeTab}</tbody></table>
