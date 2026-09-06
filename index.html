@@ -1200,7 +1200,8 @@ function reportConGrafico(piano, calcolo){
     @media print{
       body{ margin:0; }
       h2{ page-break-after:avoid; }
-      .grafico{ page-break-inside:avoid; page-break-after:always; }
+      .grafico{ page-break-inside:avoid; }
+      .blocco{ page-break-inside:avoid; }
       table{ page-break-inside:auto; }
       tr{ page-break-inside:avoid; }
       thead{ display:table-header-group; }
@@ -1215,19 +1216,19 @@ function reportConGrafico(piano, calcolo){
       ${barre}
     </div>
 
-    <h2>Moduli</h2>
-    <table><thead><tr><th>Modulo</th><th>Lezioni</th><th>Verifica</th><th>Periodo</th></tr></thead><tbody>${righeTab}</tbody></table>
+    <div class="blocco"><h2>Moduli</h2>
+    <table><thead><tr><th>Modulo</th><th>Lezioni</th><th>Verifica</th><th>Periodo</th></tr></thead><tbody>${righeTab}</tbody></table></div>
 
-    <h2>Calendario delle verifiche</h2>
+    <div class="blocco"><h2>Calendario delle verifiche</h2>
     <p style="font-size:11px; color:#6b5d4d; margin:0 0 8px;">Le date potranno subire lievi variazioni in base allo svolgimento effettivo del programma.</p>
-    <table><thead><tr><th>Modulo</th><th>Tipo</th><th>Data</th></tr></thead><tbody>${righeVer || '<tr><td colspan="3">Nessuna verifica programmata.</td></tr>'}</tbody></table>
+    <table><thead><tr><th>Modulo</th><th>Tipo</th><th>Data</th></tr></thead><tbody>${righeVer || '<tr><td colspan="3">Nessuna verifica programmata.</td></tr>'}</tbody></table></div>
 
-    <h2>Riepilogo</h2>
+    <div class="blocco"><h2>Riepilogo</h2>
     <table><thead><tr><th>Periodo</th><th>Verifiche</th><th>Scritte</th><th>Orali</th><th>Lezioni</th></tr></thead><tbody>
       ${rigaR('Primo quadrimestre (fino al ' + formattaDataBreve(r.limite) + ')', r.primo)}
       ${rigaR('Secondo quadrimestre', r.secondo)}
       ${rigaR('<b>Totale anno</b>', r.totale)}
-    </tbody></table>
+    </tbody></table></div>
   </body></html>`;
 
   const w = window.open('', '_blank');
