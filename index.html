@@ -1127,6 +1127,104 @@ function rtfEscape(s){
     .replace(/[\u0080-\uffff]/g, c => '\\u' + c.charCodeAt(0) + '?');
 }
 
+// Report stampabile con il diagramma: si apre in una finestra nuova,
+// da lì Cmd+P e "Salva come PDF" per condividerlo con la classe.
+function reportConGrafico(piano, calcolo){
+  if(!piano.dataInizio || !piano.dataFine || !piano.moduli.length){
+    alert('Servono le date del periodo e almeno un modulo.'); return;
+  }
+  const inizio = parseISO(piano.dataInizio), fine = parseISO(piano.dataFine);
+  const totaleGiorni = Math.max(1, (fine - inizio) / 86400000);
+
+  let mesi = '', cur = new Date(inizio.getFullYear(), inizio.getMonth(), 1);
+  while(cur <= fine){
+    const iSeg = cur < inizio ? inizio : new Date(cur);
+    const fMese = new Date(cur.getFullYear(), cur.getMonth()+1, 0);
+    const fSeg = fMese > fine ? fine : fMese;
+    const g = Math.max(1, (fSeg - iSeg)/86400000 + 1);
+    mesi += `<div class="mese" style="flex:${g} 0 0">${MESI_LABEL[cur.getMonth()].slice(0,3)}</div>`;
+    cur.setMonth(cur.getMonth()+1);
+  }
+
+  let barre = '';
+  calcolo.righe.forEach((r, i) => {
+    const dIn = parseISO(r.dataInizio), dFi = parseISO(r.dataFineTotale);
+    const left = Math.max(0, (dIn - inizio)/86400000 / totaleGiorni * 100);
+    const width = Math.max(1.5, ((dFi - dIn)/86400000 + 1) / totaleGiorni * 100);
+    barre += `<div class="riga-g">
+      <div class="etichetta-g">${i+1}. ${escapeHtml(r.modulo.nome)}</div>
+      <div class="pista"><div class="barra" style="left:${left}%; width:${width}%; background:${PALETTE_BARRE[i % PALETTE_BARRE.length]}">
+        ${formattaDataBreve(r.dataInizio)} – ${formattaDataBreve(r.dataFineTotale)}</div></div>
+    </div>`;
+  });
+
+  let righeTab = '';
+  calcolo.righe.forEach((r, i) => {
+    righeTab += `<tr><td>${i+1}. ${escapeHtml(r.modulo.nome)}</td><td>${r.lezioniPreviste}</td>
+      <td>${r.lezioniVerifica || '–'}</td><td>${formattaDataBreve(r.dataInizio)} – ${formattaDataBreve(r.dataFineTotale)}</td></tr>`;
+  });
+
+  let righeVer = '';
+  (calcolo.verifiche||[]).forEach(pv => {
+    if(!pv.date || !pv.date.length) return;
+    const nomi = piano.moduli.reduce((acc, mm, k) => {
+      const dentro = mm.id === pv.modulo.id || (pv.verifica.moduli||[]).includes(mm.id);
+      return dentro ? acc.concat((k+1) + '. ' + mm.nome) : acc;
+    }, []).join(' · ');
+    const quando = formattaDataBreve(pv.date[0]) + (pv.date.length>1 ? ' – ' + formattaDataBreve(pv.date[pv.date.length-1]) : '');
+    righeVer += `<tr><td>${escapeHtml(nomi)}</td><td>${pv.verifica.tipo === 'orale' ? 'Orale' : 'Scritta'}${pv.verifica.qualifica==='recupero' ? ' (recupero)' : ''}</td><td>${quando}</td></tr>`;
+  });
+
+  const r = riepilogoVerifiche(piano, calcolo);
+  const rigaR = (n,d)=> `<tr><td>${n}</td><td>${d.totale}</td><td>${d.scritte}</td><td>${d.orali}</td><td>${d.lezioni}</td></tr>`;
+
+  const html = `<!DOCTYPE html><html lang="it"><head><meta charset="UTF-8">
+  <title>Programma ${escapeHtml(piano.nome)}</title><style>
+    body{ font-family:Georgia, 'Times New Roman', serif; color:#33291f; background:#fff; margin:28px; line-height:1.45; }
+    h1{ font-size:20px; margin:0 0 4px; color:#2c6b5f; }
+    .sotto{ font-size:12px; color:#6b5d4d; margin-bottom:22px; }
+    h2{ font-size:14px; text-transform:uppercase; letter-spacing:.06em; color:#2c6b5f; margin:26px 0 10px; }
+    table{ width:100%; border-collapse:collapse; font-size:12px; }
+    th,td{ border-bottom:1px solid #ddd2c0; padding:5px 7px; text-align:left; vertical-align:top; }
+    th{ background:#f3ece0; font-size:10px; text-transform:uppercase; letter-spacing:.05em; }
+    td:nth-child(2), td:nth-child(3){ width:70px; }
+    .mesi{ display:flex; border-bottom:1px solid #ddd2c0; margin-left:190px; }
+    .mese{ font-size:9px; text-transform:uppercase; color:#6b5d4d; border-left:1px solid #eee4d6; padding:2px 3px; }
+    .riga-g{ display:flex; align-items:center; height:20px; }
+    .etichetta-g{ width:190px; font-size:10px; padding-right:8px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .pista{ position:relative; flex:1; height:14px; background:#faf6ee; }
+    .barra{ position:absolute; top:0; height:14px; border-radius:3px; color:#fff; font-size:8px;
+            line-height:14px; padding:0 4px; overflow:hidden; white-space:nowrap; }
+    @media print{ body{ margin:12mm; } h2{ page-break-after:avoid; } table{ page-break-inside:auto; } tr{ page-break-inside:avoid; } }
+  </style></head><body>
+    <h1>Programma e calendario — ${escapeHtml(piano.nome)}</h1>
+    <div class="sotto">${formattaDataBreve(piano.dataInizio)} – ${formattaDataBreve(piano.dataFine)} · ${calcolo.lezioniTotali} lezioni nel periodo</div>
+
+    <h2>Scansione temporale</h2>
+    <div class="mesi">${mesi}</div>
+    ${barre}
+
+    <h2>Moduli</h2>
+    <table><thead><tr><th>Modulo</th><th>Lezioni</th><th>Verifica</th><th>Periodo</th></tr></thead><tbody>${righeTab}</tbody></table>
+
+    <h2>Calendario delle verifiche</h2>
+    <p style="font-size:11px; color:#6b5d4d; margin:0 0 8px;">Le date potranno subire lievi variazioni in base allo svolgimento effettivo del programma.</p>
+    <table><thead><tr><th>Modulo</th><th>Tipo</th><th>Data</th></tr></thead><tbody>${righeVer || '<tr><td colspan="3">Nessuna verifica programmata.</td></tr>'}</tbody></table>
+
+    <h2>Riepilogo</h2>
+    <table><thead><tr><th>Periodo</th><th>Verifiche</th><th>Scritte</th><th>Orali</th><th>Lezioni</th></tr></thead><tbody>
+      ${rigaR('Primo quadrimestre (fino al ' + formattaDataBreve(r.limite) + ')', r.primo)}
+      ${rigaR('Secondo quadrimestre', r.secondo)}
+      ${rigaR('<b>Totale anno</b>', r.totale)}
+    </tbody></table>
+  </body></html>`;
+
+  const w = window.open('', '_blank');
+  if(!w){ alert('Il browser ha bloccato la finestra. Consenti i popup per questo sito e riprova.'); return; }
+  w.document.write(html);
+  w.document.close();
+}
+
 function esportaCronoProgrammaWord(piano, calcolo){
   // larghezze colonne in twips (1440 twips = 1 pollice)
   const larghezze = [2900, 1400, 1400, 1100, 3200];
@@ -1505,6 +1603,7 @@ function renderPannelloDiagramma(piano, calcolo){
     <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;">
       <h3>Diagramma</h3>
       <button class="btn-aggiungi" id="btn-esporta-word">⤓ esporta crono programma (RTF — Word/Pages)</button>
+      <button class="btn-aggiungi" id="btn-report-grafico">⤓ report con grafico (per gli studenti)</button>
     </div>
     ${sfora>0
       ? `<div class="banner-sforo">⚠︎ Stai sforando di <b>${sfora}</b> ${sfora===1?'lezione':'lezioni'}: la programmazione richiede <b>${totServe}</b> lezioni (${totSpieg} di spiegazione + ${totVerif+sfora} di verifica) ma nel periodo ne hai solo <b>${calcolo.lezioniTotali}</b>.</div>`
@@ -1525,6 +1624,7 @@ function renderPannelloDiagramma(piano, calcolo){
     ${calcolo.overflowTotale>0 ? `<div class="avviso">Con il calendario attuale non ci sono abbastanza lezioni per completare tutti i moduli entro il ${formattaDataBreve(piano.dataFine)}. Valuta di allungare il periodo, aggiungere lezioni extra o ridurre le lezioni previste in qualche modulo.</div>` : ''}
   `;
   document.getElementById('btn-esporta-word').addEventListener('click', ()=> esportaCronoProgrammaWord(piano, calcolo));
+  document.getElementById('btn-report-grafico').addEventListener('click', ()=> reportConGrafico(piano, calcolo));
   renderGantt(piano, calcolo);
 }
 
