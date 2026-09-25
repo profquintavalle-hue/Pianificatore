@@ -336,6 +336,13 @@
   .riga-precompila input[type=number]{ width:70px; padding:6px 8px; border:1px solid var(--bordo); border-radius:6px; }
   .riga-precompila input[type=text]{ width:150px; padding:6px 8px; border:1px solid var(--bordo); border-radius:6px; font-family:inherit; }
   .riga-precompila select{ padding:6px 8px; border:1px solid var(--bordo); border-radius:6px; font-family:inherit; font-size:0.83rem; background:#fff; max-width:340px; }
+  .chk-sel-modulo{ width:17px; height:17px; accent-color:var(--teal); cursor:pointer; margin:0 4px 0 0; vertical-align:middle; }
+  tr.modulo-selezionato > td{ background:rgba(179,73,42,0.08); }
+  .barra-sposta-moduli{ position:sticky; top:0; z-index:40; display:flex; align-items:center; flex-wrap:wrap; gap:8px;
+    margin:6px 0 10px; padding:9px 12px; background:#FBEFE6; border:1px solid var(--ruggine); border-radius:8px;
+    font-size:0.83rem; box-shadow:0 4px 10px rgba(179,73,42,0.12); }
+  .barra-sposta-moduli b{ color:var(--ruggine); }
+  .barra-sposta-moduli select{ padding:6px 8px; border:1px solid var(--bordo); border-radius:6px; font-family:inherit; font-size:0.83rem; background:#fff; max-width:340px; }
   .riga-posizione{ margin:10px 0 8px; padding:8px 12px; background:#FFF6E8; border:1px solid var(--bordo); border-radius:8px; }
   .riga-posizione span{ font-weight:600; }
   .riga-precompila .sep{ margin-left:-4px; opacity:.65; }
@@ -941,9 +948,10 @@ function renderMain(){
 
     <details class="pannello" open id="pannello-moduli">
       <summary>Moduli</summary>
+      <div id="barra-sposta-moduli"></div>
       <table class="tabella-moduli">
         <thead><tr>
-          <th style="width:36px"></th>
+          <th style="width:70px"></th>
           <th>Modulo</th>
           <th style="width:110px">Lezioni previste</th>
           <th style="width:150px">Totale con verifiche</th>
@@ -1393,15 +1401,57 @@ if(!window._chiudiPannelliModuli){
     document.querySelectorAll('.pannello-moduli-verifica').forEach(x => x.hidden = true);
   });
 }
+let moduliSelPiano = new Set();
+
+// Barra che compare quando si spuntano dei moduli: permette di spostarli in blocco.
+function renderBarraSposta(piano){
+  const cont = document.getElementById('barra-sposta-moduli');
+  if(!cont) return;
+  const sel = piano.moduli.filter(m => moduliSelPiano.has(m.id));
+  if(!sel.length){ cont.innerHTML = ''; return; }
+  const accorcia = s => s.length > 45 ? s.slice(0,45) + '…' : s;
+  cont.innerHTML = `
+    <div class="barra-sposta-moduli">
+      <span><b>${sel.length}</b> ${sel.length===1?'modulo selezionato':'moduli selezionati'} · Sposta</span>
+      <select id="sel-sposta-moduli">
+        <option value="inizio">all'inizio</option>
+        ${piano.moduli.map((m, i) => moduliSelPiano.has(m.id) ? '' : `<option value="${m.id}">dopo ${i+1}. ${escapeHtml(accorcia(m.nome))}</option>`).join('')}
+        <option value="fine">in fondo</option>
+      </select>
+      <button class="btn-precompila" id="btn-sposta-moduli">Sposta</button>
+      <button class="btn-precompila" id="btn-sel-tutti-moduli">Seleziona tutti</button>
+      <button class="btn-precompila" id="btn-desel-moduli">Deseleziona</button>
+    </div>`;
+  cont.querySelector('#btn-sposta-moduli').addEventListener('click', ()=>{
+    const pos = cont.querySelector('#sel-sposta-moduli').value;
+    const blocco = piano.moduli.filter(m => moduliSelPiano.has(m.id));
+    const resto = piano.moduli.filter(m => !moduliSelPiano.has(m.id));
+    if(pos === 'inizio') piano.moduli = blocco.concat(resto);
+    else if(pos === 'fine') piano.moduli = resto.concat(blocco);
+    else {
+      const idx = resto.findIndex(m => m.id === pos);
+      resto.splice(idx + 1, 0, ...blocco);
+      piano.moduli = resto;
+    }
+    moduliSelPiano.clear();
+    salvaDati(); render();
+  });
+  cont.querySelector('#btn-sel-tutti-moduli').addEventListener('click', ()=>{ piano.moduli.forEach(m => moduliSelPiano.add(m.id)); renderTabellaModuli(piano); });
+  cont.querySelector('#btn-desel-moduli').addEventListener('click', ()=>{ moduliSelPiano.clear(); renderTabellaModuli(piano); });
+}
+
 function renderTabellaModuli(piano){
   const corpo = document.getElementById('corpo-tabella-moduli');
   corpo.innerHTML = '';
+  renderBarraSposta(piano);
   const calcolo = calcolaPianificazione(piano);
   piano.moduli.forEach((m, i)=>{
     const riga = calcolo.righe[i];
     const tr = document.createElement('tr');
+    if(moduliSelPiano.has(m.id)) tr.className = 'modulo-selezionato';
     tr.innerHTML = `
-      <td>
+      <td style="white-space:nowrap;">
+        <input type="checkbox" class="chk-sel-modulo" title="Seleziona per spostare" ${moduliSelPiano.has(m.id)?'checked':''}>
         <button class="azione-icona" data-azione="su" title="Sposta su">↑</button>
         <button class="azione-icona" data-azione="giu" title="Sposta giù">↓</button>
       </td>
@@ -1419,6 +1469,11 @@ function renderTabellaModuli(piano){
     `;
     tr.querySelector('[data-campo=nome]').addEventListener('input', e=>{ m.nome=e.target.value; salvaDati(); renderGanttOnly(); });
     tr.querySelector('[data-campo=lezioni]').addEventListener('input', e=>{ m.lezioni = Math.max(1, parseInt(e.target.value)||1); salvaDati(); renderTabellaModuli(piano); renderGanttOnly(); });
+    tr.querySelector('.chk-sel-modulo').addEventListener('change', e=>{
+      if(e.target.checked) moduliSelPiano.add(m.id); else moduliSelPiano.delete(m.id);
+      tr.classList.toggle('modulo-selezionato', e.target.checked);
+      renderBarraSposta(piano);
+    });
     tr.querySelector('[data-azione=elimina]').addEventListener('click', ()=>{ piano.moduli.splice(i,1); salvaDati(); render(); });
     tr.querySelector('[data-azione=su]').addEventListener('click', ()=>{ if(i>0){ [piano.moduli[i-1],piano.moduli[i]]=[piano.moduli[i],piano.moduli[i-1]]; salvaDati(); render(); } });
     tr.querySelector('[data-azione=giu]').addEventListener('click', ()=>{ if(i<piano.moduli.length-1){ [piano.moduli[i+1],piano.moduli[i]]=[piano.moduli[i],piano.moduli[i+1]]; salvaDati(); render(); } });
