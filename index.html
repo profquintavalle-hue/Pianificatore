@@ -230,8 +230,8 @@
   }
   table.tabella-moduli input[type=text]{
     width:100%;
-    border:1px solid transparent;
-    background:transparent;
+    border:1px solid var(--bordo);
+    background:#FFFDF8;
     padding:5px 6px;
     border-radius:5px;
     font-size:0.85rem;
@@ -239,7 +239,7 @@
     color:var(--inchiostro);
   }
   table.tabella-moduli input[type=text]:hover, table.tabella-moduli input[type=text]:focus{
-    border-color:var(--bordo); background:var(--carta-alt); outline:none;
+    border-color:var(--ruggine, #B5652B); background:#FFFFFF; outline:none;
   }
   table.tabella-moduli input[type=number]{
     width:56px;
@@ -335,6 +335,9 @@
   .riga-precompila{ display:flex; align-items:center; flex-wrap:wrap; gap:8px; font-size:0.83rem; margin-bottom:6px; }
   .riga-precompila input[type=number]{ width:70px; padding:6px 8px; border:1px solid var(--bordo); border-radius:6px; }
   .riga-precompila input[type=text]{ width:150px; padding:6px 8px; border:1px solid var(--bordo); border-radius:6px; font-family:inherit; }
+  .riga-precompila select{ padding:6px 8px; border:1px solid var(--bordo); border-radius:6px; font-family:inherit; font-size:0.83rem; background:#fff; max-width:340px; }
+  .riga-posizione{ margin:10px 0 8px; padding:8px 12px; background:#FFF6E8; border:1px solid var(--bordo); border-radius:8px; }
+  .riga-posizione span{ font-weight:600; }
   .riga-precompila .sep{ margin-left:-4px; opacity:.65; }
   .riga-precompila .chk{ display:flex; align-items:center; gap:4px; opacity:.8; }
   .btn-precompila{ padding:6px 12px; border:1px solid var(--teal); border-radius:6px; background:#fff; color:var(--teal);
@@ -949,6 +952,15 @@ function renderMain(){
         </tr></thead>
         <tbody id="corpo-tabella-moduli"></tbody>
       </table>
+      ${piano.moduli.length ? `
+      <div class="riga-precompila riga-posizione">
+        <span>I moduli nuovi (aggiunti, copiati o incollati) vanno</span>
+        <select id="sel-posizione-moduli">
+          <option value="fine">in fondo</option>
+          <option value="inizio">all'inizio</option>
+          ${piano.moduli.map((m, i) => `<option value="${m.id}">dopo ${i+1}. ${escapeHtml(m.nome.length > 45 ? m.nome.slice(0,45) + '…' : m.nome)}</option>`).join('')}
+        </select>
+      </div>` : ''}
       <button class="btn-aggiungi" id="btn-aggiungi-modulo">+ aggiungi modulo</button>
       ${stato.piani.length > 1 ? `
       <div class="riga-precompila">
@@ -1080,7 +1092,7 @@ function renderMain(){
       if(!confirm('Sostituisco i ' + piano.moduli.length + ' moduli di questa classe con i ' + copiati.length + ' di ' + origine.nome + '?')) return;
       piano.moduli = copiati;
     } else {
-      piano.moduli = piano.moduli.concat(copiati);
+      inserisciModuli(piano, copiati);
     }
     salvaDati(); render();
     mostraNotaBackup(copiati.length + ' moduli copiati da ' + origine.nome + (conVerifiche ? ' con le verifiche.' : '.'), 'ok');
@@ -1102,14 +1114,14 @@ function renderMain(){
       if(!confirm('Sostituisco i ' + piano.moduli.length + ' moduli esistenti di questa classe con i ' + nuovi.length + ' nuovi? Le verifiche collegate ai vecchi moduli andranno perse.')) return;
       piano.moduli = nuovi;
     } else {
-      piano.moduli = piano.moduli.concat(nuovi);
+      inserisciModuli(piano, nuovi);
     }
     document.getElementById('testo-moduli').value = '';
     salvaDati(); render();
     mostraNotaBackup(nuovi.length + ' moduli inseriti.', 'ok');
   });
   document.getElementById('btn-aggiungi-modulo').addEventListener('click', ()=>{
-    piano.moduli.push({ id: idCasuale(), nome:'Nuovo modulo', lezioni:4, verifiche: [] });
+    inserisciModuli(piano, [{ id: idCasuale(), nome:'Nuovo modulo', lezioni:4, verifiche: [] }]);
     salvaDati(); render();
   });
 
@@ -1334,6 +1346,16 @@ function ordinaFestivita(piano){
   const prima = piano.festivita.map(chiave).join(',');
   piano.festivita.sort((x, y) => chiave(x) < chiave(y) ? -1 : chiave(x) > chiave(y) ? 1 : 0);
   return prima !== piano.festivita.map(chiave).join(',');
+}
+
+// Inserisce i moduli nuovi nella posizione scelta nel menu "I moduli nuovi vanno".
+function inserisciModuli(piano, nuovi){
+  const sel = document.getElementById('sel-posizione-moduli');
+  const pos = sel ? sel.value : 'fine';
+  if(pos === 'inizio'){ piano.moduli = nuovi.concat(piano.moduli); return; }
+  const idx = piano.moduli.findIndex(m => m.id === pos);
+  if(pos === 'fine' || idx < 0){ piano.moduli = piano.moduli.concat(nuovi); return; }
+  piano.moduli.splice(idx + 1, 0, ...nuovi);
 }
 
 function renderFestivita(piano){
