@@ -1328,9 +1328,18 @@ function formattaDataBreve(iso){
   return String(d.getDate()).padStart(2,'0') + ' ' + MESI_LABEL[d.getMonth()].slice(0,3) + ' ' + d.getFullYear();
 }
 
+// Ordina le festività in ordine cronologico (per data di inizio, poi di fine).
+function ordinaFestivita(piano){
+  const chiave = f => (f.da || '9999') + '|' + (f.a || '9999');
+  const prima = piano.festivita.map(chiave).join(',');
+  piano.festivita.sort((x, y) => chiave(x) < chiave(y) ? -1 : chiave(x) > chiave(y) ? 1 : 0);
+  return prima !== piano.festivita.map(chiave).join(',');
+}
+
 function renderFestivita(piano){
   const cont = document.getElementById('lista-festivita');
   cont.innerHTML = '';
+  ordinaFestivita(piano);
   piano.festivita.forEach((f, i)=>{
     const riga = document.createElement('div');
     riga.className = 'riga-eccezione';
@@ -1344,6 +1353,13 @@ function renderFestivita(piano){
     riga.querySelector('[data-campo=etichetta]').addEventListener('input', e=>{ f.etichetta=e.target.value; salvaDati(); });
     riga.querySelector('[data-campo=da]').addEventListener('change', e=>{ f.da=e.target.value; salvaDati(); renderGanttOnly(); });
     riga.querySelector('[data-campo=a]').addEventListener('change', e=>{ f.a=e.target.value; salvaDati(); renderGanttOnly(); });
+    // quando si esce dalla data, la riga va al suo posto in ordine cronologico
+    riga.querySelectorAll('input[type=date]').forEach(inp => inp.addEventListener('blur', ()=>{
+      setTimeout(()=>{
+        if(riga.contains(document.activeElement)) return;
+        if(ordinaFestivita(piano)){ salvaDati(); renderFestivita(piano); }
+      }, 0);
+    }));
     riga.querySelector('.elimina').addEventListener('click', ()=>{ piano.festivita.splice(i,1); salvaDati(); render(); });
     cont.appendChild(riga);
   });
