@@ -1228,7 +1228,7 @@ function reportConGrafico(piano, calcolo){
   const rigaR = (n,d)=> `<tr><td>${n}</td><td>${d.totale}</td><td>${d.scritte}</td><td>${d.orali}</td><td>${d.lezioni}</td></tr>`;
 
   const html = `<!DOCTYPE html><html lang="it"><head><meta charset="UTF-8">
-  <title>Programma ${escapeHtml(piano.nome)}</title><style>
+  <title>Programmazione ${escapeHtml(piano.nome)}</title><style>
     body{ font-family:Georgia, 'Times New Roman', serif; color:#33291f; background:#fff; margin:28px; line-height:1.45; }
     h1{ font-size:20px; margin:0 0 4px; color:#2c6b5f; }
     .sotto{ font-size:12px; color:#6b5d4d; margin-bottom:22px; }
@@ -1256,7 +1256,7 @@ function reportConGrafico(piano, calcolo){
       thead{ display:table-header-group; }
     }
   </style></head><body>
-    <h1>Programma e calendario — ${escapeHtml(piano.nome)}</h1>
+    <h1>Programmazione e calendario — ${escapeHtml(piano.nome)}</h1>
     <div class="sotto">${formattaDataBreve(piano.dataInizio)} – ${formattaDataBreve(piano.dataFine)} · ${calcolo.lezioniTotali} lezioni nel periodo</div>
 
     <div class="grafico">
@@ -1306,7 +1306,7 @@ function esportaCronoProgrammaWord(piano, calcolo){
 
   let rtf = '{\\rtf1\\ansi\\ansicpg1252\\deff0\\deflang1040{\\fonttbl{\\f0\\fswiss\\fcharset0 Calibri;}}\n';
   rtf += '\\f0\\fs22\n';
-  rtf += '{\\pard\\b\\fs32 Crono programma \\emdash ' + rtfEscape(piano.nome) + '\\par}\n';
+  rtf += '{\\pard\\b\\fs32 Programmazione \\emdash ' + rtfEscape(piano.nome) + '\\par}\n';
   rtf += '{\\pard\\fs18\\sa240 Periodo: ' + rtfEscape(formattaDataBreve(piano.dataInizio)) + ' \\endash ' + rtfEscape(formattaDataBreve(piano.dataFine)) + '   \\emdash   ' + calcolo.lezioniTotali + ' lezioni disponibili nel periodo\\par}\n';
   rtf += rigaTabella(['Modulo','Lezioni spiegazione','Lezioni verifica','Totale','Periodo previsto'], true);
   calcolo.righe.forEach((r, i)=>{
@@ -1364,7 +1364,7 @@ function esportaCronoProgrammaWord(piano, calcolo){
   const a = document.createElement('a');
   a.href = url;
   const nomeFile = piano.nome.replace(/[^a-z0-9àèéìòù ]/gi,'').trim().replace(/\s+/g,'_') || 'piano';
-  a.download = nomeFile + '_crono_programma.rtf';
+  a.download = 'Programmazione_' + nomeFile + '.rtf';
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
@@ -1736,7 +1736,7 @@ function renderPannelloDiagramma(piano, calcolo){
   cont.innerHTML = `
     <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;">
       <h3>Diagramma</h3>
-      <button class="btn-aggiungi" id="btn-esporta-word">⤓ esporta crono programma (RTF — Word/Pages)</button>
+      <button class="btn-aggiungi" id="btn-esporta-word">⤓ esporta programmazione (RTF — Word/Pages)</button>
       <button class="btn-aggiungi" id="btn-report-grafico">⤓ report con grafico (per gli studenti)</button>
     </div>
     ${sfora>0
