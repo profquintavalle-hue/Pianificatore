@@ -642,6 +642,22 @@ function precompilaFestivitaPiano(piano, annoInizio, patrono){
   piano.festivita = generaFestivita(annoInizio, patrono).concat(manuali);
 }
 
+// Copia le vacanze aggiunte a mano di un piano negli altri piani, senza doppioni (stesse date).
+function copiaVacanzeManuali(origine){
+  const manuali = origine.festivita.filter(f => !f.auto);
+  let aggiunte = 0;
+  stato.piani.forEach(p => {
+    if(p === origine) return;
+    const presenti = new Set(p.festivita.map(f => f.da + '|' + f.a));
+    manuali.forEach(f => {
+      if(presenti.has(f.da + '|' + f.a)) return;
+      p.festivita.push({ etichetta: f.etichetta, da: f.da, a: f.a });
+      aggiunte++;
+    });
+  });
+  return aggiunte;
+}
+
 function inFestivita(iso, festivita){
   return festivita.some(f => iso >= f.da && iso <= f.a);
 }
@@ -943,6 +959,10 @@ function renderMain(){
         <div class="nota-precompila">Calcola da sé Pasqua, martedì grasso, feste nazionali, Sa die e patrono. I periodi che aggiungi a mano (ponti del collegio) non vengono toccati.</div>
         <div id="lista-festivita" class="lista-eccezioni"></div>
         <button class="btn-aggiungi" id="btn-aggiungi-festivita">+ aggiungi periodo di vacanza</button>
+        <div class="riga-precompila" style="margin-top:8px;">
+          <button class="btn-precompila" id="btn-copia-vacanze-manuali">Copia in tutte le altre classi le vacanze aggiunte a mano</button>
+          <span class="nota-precompila" style="margin:0;">ponti e vacanze deliberate; quelle già presenti non vengono duplicate</span>
+        </div>
       </div>
     </details>
 
@@ -1058,10 +1078,19 @@ function renderMain(){
     const tutti = document.getElementById('feste-tutti').checked;
     const bersagli = tutti ? stato.piani : [piano];
     bersagli.forEach(p => precompilaFestivitaPiano(p, anno, patrono));
+    if(tutti) copiaVacanzeManuali(piano);
     salvaDati(); render();
     mostraNotaBackup(tutti
       ? 'Festività ' + anno + '/' + (anno+1) + ' inserite in tutte le classi.'
       : 'Festività ' + anno + '/' + (anno+1) + ' inserite in questa classe.', 'ok');
+  });
+  document.getElementById('btn-copia-vacanze-manuali').addEventListener('click', ()=>{
+    const manuali = piano.festivita.filter(f => !f.auto);
+    if(!manuali.length){ alert('In questa classe non ci sono vacanze aggiunte a mano da copiare.'); return; }
+    if(stato.piani.length < 2){ alert('C\'è una sola classe.'); return; }
+    const n = copiaVacanzeManuali(piano);
+    salvaDati(); render();
+    mostraNotaBackup(n ? 'Vacanze aggiunte a mano copiate nelle altre classi (' + n + ' inserimenti).' : 'Le altre classi avevano già queste vacanze.', 'ok');
   });
   document.getElementById('btn-aggiungi-festivita').addEventListener('click', ()=>{
     piano.festivita.push({ da: piano.dataInizio, a: piano.dataInizio, etichetta:'Vacanza' });
