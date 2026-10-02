@@ -999,6 +999,36 @@ function bloccoArgomenti(m, cfg){
   det.appendChild(inc);
   return det;
 }
+// Copia solo gli argomenti nei moduli con lo stesso nome, senza toccare lezioni, verifiche e approfondimenti.
+function normaNomeArg(s){
+  return (s || '').toLowerCase().replace(/[\u2019\u2018`\u00B4]/g, "'").replace(/[\u201C\u201D\u00AB\u00BB]/g, '"').replace(/\s+/g, ' ').trim();
+}
+function copiaSoloArgomenti(origine, destinazione, conSpunte){
+  let moduliToccati = 0, aggiunti = 0;
+  const senza = [];
+  destinazione.moduli.forEach(m => {
+    const o = origine.moduli.find(x => normaNomeArg(x.nome) === normaNomeArg(m.nome));
+    if(!o){ senza.push(m.nome); return; }
+    if(!Array.isArray(m.argomenti)) m.argomenti = [];
+    const presenti = new Set(m.argomenti.map(a => normaNomeArg(a.testo)));
+    let n = 0;
+    (o.argomenti || []).forEach(a => {
+      const chiave = normaNomeArg(a.testo);
+      if(!chiave || presenti.has(chiave)) return;
+      m.argomenti.push({ id: idCasuale(), testo: a.testo, fatto: conSpunte ? !!a.fatto : false });
+      presenti.add(chiave); n++;
+    });
+    if(n){ moduliToccati++; aggiunti += n; }
+  });
+  return { moduliToccati, aggiunti, senza };
+}
+function messaggioSoloArgomenti(r, nomeOrigine){
+  let t = r.aggiunti
+    ? (r.aggiunti === 1 ? 'Copiato 1 argomento' : 'Copiati ' + r.aggiunti + ' argomenti') + ' da ' + nomeOrigine + ' in ' + r.moduliToccati + (r.moduliToccati === 1 ? ' modulo.' : ' moduli.')
+    : 'Nessun argomento nuovo da copiare: i moduli corrispondenti li hanno già.';
+  if(r.senza.length) t += '\n\nQuesti moduli non hanno un modulo con lo stesso nome in ' + nomeOrigine + ', quindi non sono stati toccati:\n- ' + r.senza.join('\n- ');
+  return t;
+}
 
 // ---------- Rendering ----------
 
@@ -1155,6 +1185,7 @@ function renderMain(){
         </select>
         <label class="chk"><input type="checkbox" id="copia-con-verifiche"> con le verifiche</label>
         <label class="chk"><input type="checkbox" id="copia-sostituisci"> sostituisci i moduli attuali</label>
+        <label class="chk" title="Copia solo gli argomenti nei moduli con lo stesso nome: lezioni e verifiche di questa classe non cambiano"><input type="checkbox" id="copia-solo-argomenti"> solo gli argomenti</label>
         <button class="btn-precompila" id="btn-copia-moduli">Copia</button>
       </div>` : ''}
       <details class="blocco-incolla" id="blocco-incolla">
@@ -1255,10 +1286,25 @@ function renderMain(){
 
   renderTabellaModuli(piano);
   const btnCopiaModuli = document.getElementById('btn-copia-moduli');
+  const chkSoloArg = document.getElementById('copia-solo-argomenti');
+  if(chkSoloArg) chkSoloArg.addEventListener('change', ()=>{
+    ['copia-con-verifiche','copia-sostituisci'].forEach(id => {
+      const c = document.getElementById(id);
+      c.disabled = chkSoloArg.checked;
+      if(chkSoloArg.checked) c.checked = false;
+      c.parentElement.style.opacity = chkSoloArg.checked ? '0.45' : '';
+    });
+  });
   if(btnCopiaModuli) btnCopiaModuli.addEventListener('click', ()=>{
     const idOrigine = document.getElementById('sel-copia-da').value;
     const origine = stato.piani.find(p => p.id === idOrigine);
     if(!origine){ alert('Scegli il piano da cui copiare.'); return; }
+    if(document.getElementById('copia-solo-argomenti').checked){
+      const ris = copiaSoloArgomenti(origine, piano, true);
+      salvaDati(); render();
+      alert(messaggioSoloArgomenti(ris, origine.nome));
+      return;
+    }
     const conVerifiche = document.getElementById('copia-con-verifiche').checked;
     const sostituisci = document.getElementById('copia-sostituisci').checked;
     // mappa vecchio id -> nuovo id, per non perdere i collegamenti delle verifiche
