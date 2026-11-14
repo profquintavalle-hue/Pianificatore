@@ -339,8 +339,8 @@
   .riga-precompila select{ padding:6px 8px; border:1px solid var(--bordo); border-radius:6px; font-family:inherit; font-size:0.83rem; background:#fff; max-width:340px; }
   .chk-sel-modulo{ width:17px; height:17px; accent-color:var(--teal); cursor:pointer; margin:0 4px 0 0; vertical-align:middle; }
   tr.modulo-selezionato > td{ background:rgba(179,73,42,0.08); }
-  .barra-sposta-moduli{ position:sticky; top:0; z-index:40; display:flex; align-items:center; flex-wrap:wrap; gap:8px;
-    margin:6px 0 10px; padding:9px 12px; background:#FBEFE6; border:1px solid var(--ruggine); border-radius:8px;
+  .barra-sposta-moduli{ position:fixed; top:10px; left:50%; transform:translateX(-50%); z-index:200; max-width:92vw; display:flex; align-items:center; flex-wrap:wrap; gap:8px;
+    margin:0; padding:9px 12px; background:#FBEFE6; border:1px solid var(--ruggine); border-radius:8px;
     font-size:0.83rem; box-shadow:0 4px 10px rgba(179,73,42,0.12); }
   .barra-sposta-moduli b{ color:var(--ruggine); }
   .barra-sposta-moduli select{ padding:6px 8px; border:1px solid var(--bordo); border-radius:6px; font-family:inherit; font-size:0.83rem; background:#fff; max-width:340px; }
@@ -533,7 +533,7 @@
 <div class="app">
   <div class="sidebar" id="sidebar">
     <h1>Pianificatore</h1>
-    <div class="sottotitolo">Moduli didattici &middot; a cascata &middot; v. 2.0</div>
+    <div class="sottotitolo">Moduli didattici &middot; a cascata &middot; v. 2.1</div>
     <div id="lista-tab"></div>
     <button class="btn-nuovo-piano" id="btn-nuovo-piano">+ nuovo piano (classe/materia)</button>
     <div class="sezione-backup">
@@ -1167,7 +1167,7 @@ function renderMain(){
         <tbody id="corpo-tabella-moduli"></tbody>
       </table>
       ${piano.moduli.length ? `
-      <div class="nota-precompila" style="margin-top:10px;">Per spostare un modulo già inserito: spunta la sua casella a sinistra e scegli dove metterlo nella barra che compare in cima.</div>` : ''}
+      <div class="nota-precompila" style="margin-top:10px;">Per spostare un modulo già inserito: spunta la sua casella a sinistra e scegli dove metterlo nella barra che compare in alto sullo schermo.</div>` : ''}
       <div class="riga-precompila riga-posizione">
         ${piano.moduli.length ? `
         <span>1. Prima scegli dove vanno i moduli nuovi (aggiunti, copiati o incollati):</span>
