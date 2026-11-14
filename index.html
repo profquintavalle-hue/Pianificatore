@@ -533,7 +533,7 @@
 <div class="app">
   <div class="sidebar" id="sidebar">
     <h1>Pianificatore</h1>
-    <div class="sottotitolo">Moduli didattici &middot; a cascata</div>
+    <div class="sottotitolo">Moduli didattici &middot; a cascata &middot; v. 2.0</div>
     <div id="lista-tab"></div>
     <button class="btn-nuovo-piano" id="btn-nuovo-piano">+ nuovo piano (classe/materia)</button>
     <div class="sezione-backup">
@@ -1167,15 +1167,18 @@ function renderMain(){
         <tbody id="corpo-tabella-moduli"></tbody>
       </table>
       ${piano.moduli.length ? `
+      <div class="nota-precompila" style="margin-top:10px;">Per spostare un modulo già inserito: spunta la sua casella a sinistra e scegli dove metterlo nella barra che compare in cima.</div>` : ''}
       <div class="riga-precompila riga-posizione">
-        <span>I moduli nuovi (aggiunti, copiati o incollati) vanno</span>
+        ${piano.moduli.length ? `
+        <span>1. Prima scegli dove vanno i moduli nuovi (aggiunti, copiati o incollati):</span>
         <select id="sel-posizione-moduli">
           <option value="fine">in fondo</option>
           <option value="inizio">all'inizio</option>
           ${piano.moduli.map((m, i) => `<option value="${m.id}">dopo ${i+1}. ${escapeHtml(m.nome.length > 45 ? m.nome.slice(0,45) + '…' : m.nome)}</option>`).join('')}
         </select>
-      </div>` : ''}
-      <button class="btn-aggiungi" id="btn-aggiungi-modulo">+ aggiungi modulo</button>
+        <span>2. poi</span>` : ''}
+        <button class="btn-aggiungi" id="btn-aggiungi-modulo" style="margin:0;">+ aggiungi modulo</button>
+      </div>
       ${stato.piani.length > 1 ? `
       <div class="riga-precompila">
         <span>Copia i moduli da</span>
