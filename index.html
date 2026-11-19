@@ -564,7 +564,7 @@
 <div class="app">
   <div class="sidebar" id="sidebar">
     <h1>Pianificatore</h1>
-    <div class="sottotitolo">Moduli didattici &middot; a cascata &middot; v. 2.4</div>
+    <div class="sottotitolo">Moduli didattici &middot; a cascata &middot; v. 2.5</div>
     <div id="lista-tab"></div>
     <button class="btn-nuovo-piano" id="btn-nuovo-piano">+ nuovo piano (classe/materia)</button>
     <div class="sezione-backup">
@@ -1244,6 +1244,12 @@ function renderMain(){
     <details class="pannello" open id="pannello-moduli">
       <summary>Moduli</summary>
       <div id="barra-sposta-moduli"></div>
+      ${piano.moduli.some(m => (m.argomenti||[]).length) ? `
+      <div class="riga-precompila" style="margin-bottom:10px;">
+        <span>Argomenti di tutti i moduli:</span>
+        <button class="btn-precompila" id="btn-spunta-tutti-arg">Spunta tutti gli argomenti di tutti i moduli</button>
+        <button class="btn-precompila" id="btn-togli-tutti-arg">Togli tutte le spunte</button>
+      </div>` : ''}
       <table class="tabella-moduli">
         <thead><tr>
           <th style="width:70px"></th>
@@ -1383,6 +1389,18 @@ function renderMain(){
     stato.civica.push({ id: idCasuale(), anno: String(piano.anno), sezione: piano.sezione, titolo: '', inizio: piano.dataInizio, lezioni: 7 });
     salvaDati(); render();
   });
+
+  const spuntaTutti = valore => {
+    const n = piano.moduli.reduce((s, m) => s + (m.argomenti||[]).length, 0);
+    if(!valore && !confirm('Togliere la spunta a tutti i ' + n + ' argomenti di questo piano?')) return;
+    piano.moduli.forEach(m => (m.argomenti||[]).forEach(a => a.fatto = valore));
+    salvaDati(); render();
+    mostraNotaBackup(valore ? 'Spuntati tutti gli argomenti (' + n + ').' : 'Tolte tutte le spunte.', 'ok');
+  };
+  const bSpTutti = document.getElementById('btn-spunta-tutti-arg');
+  if(bSpTutti) bSpTutti.addEventListener('click', ()=> spuntaTutti(true));
+  const bTogTutti = document.getElementById('btn-togli-tutti-arg');
+  if(bTogTutti) bTogTutti.addEventListener('click', ()=> spuntaTutti(false));
 
   renderTabellaModuli(piano);
   const btnCopiaModuli = document.getElementById('btn-copia-moduli');
