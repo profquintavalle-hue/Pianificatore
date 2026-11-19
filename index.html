@@ -94,6 +94,16 @@
   }
   .btn-nuovo-piano:hover{ border-color:var(--teal); color:var(--teal); }
 
+  .sezione-cestino{ margin-top:14px; font-size:0.8rem; }
+  .sezione-cestino summary{ cursor:pointer; color:var(--inchiostro-tenue); font-size:0.72rem; text-transform:uppercase; letter-spacing:0.05em; font-weight:600; }
+  .sezione-cestino select{ width:100%; margin:8px 0 6px; padding:6px; border:1px solid var(--bordo); border-radius:6px; font-family:inherit; font-size:0.8rem; background:#fff; }
+  .sezione-cestino .riga-cestino{ display:flex; justify-content:space-between; align-items:center; gap:6px; padding:5px 0; border-bottom:1px dashed var(--bordo); }
+  .sezione-cestino .data-cestino{ font-size:0.7rem; color:var(--inchiostro-tenue); }
+  .btn-piccolo{ font-family:inherit; font-size:0.75rem; padding:4px 10px; border-radius:6px; border:1px solid var(--bordo); background:#fff; cursor:pointer; color:var(--teal); }
+  .btn-piccolo:hover{ border-color:var(--teal); }
+  .btn-piccolo.rosso{ color:var(--ruggine); }
+  .btn-piccolo.rosso:hover{ border-color:var(--ruggine); }
+  .btn-piccolo:disabled{ opacity:0.4; cursor:default; }
   .sezione-backup{
     margin-top:auto;
     padding-top:18px;
@@ -564,9 +574,10 @@
 <div class="app">
   <div class="sidebar" id="sidebar">
     <h1>Pianificatore</h1>
-    <div class="sottotitolo">Moduli didattici &middot; a cascata &middot; v. 2.5</div>
+    <div class="sottotitolo">Moduli didattici &middot; a cascata &middot; v. 2.6</div>
     <div id="lista-tab"></div>
     <button class="btn-nuovo-piano" id="btn-nuovo-piano">+ nuovo piano (classe/materia)</button>
+    <div id="sezione-cestino"></div>
     <div class="sezione-backup">
       <div class="titolo-backup">Backup</div>
       <button class="btn-backup" id="btn-esporta-backup">⤓ Salva backup su file</button>
@@ -603,6 +614,7 @@ function salvaDati(){
 
 let stato = caricaDati();
 if(!stato.festeConfig) stato.festeConfig = { anno: (new Date().getMonth() >= 8 ? new Date().getFullYear() : new Date().getFullYear()-1), nome:'San Saturnino', giorno:30, mese:10 };
+if(!Array.isArray(stato.cestino)) stato.cestino = []; // piani eliminati, ripristinabili
 if(!Array.isArray(stato.civica)) stato.civica = []; // progetti di educazione civica, per classe
 // Promemoria backup: confrontiamo l'ultima modifica con l'ultimo salvataggio su file.
 let ultimaModifica = 0;   // impostata da salvaDati()
@@ -643,15 +655,17 @@ function pianoCorrente(){
   return p;
 }
 
-function eliminaPiano(id, ev){
-  ev.stopPropagation();
-  if(!confirm('Eliminare questo piano? Non si può annullare.')) return;
+function eliminaPiano(id){
+  const p = stato.piani.find(x => x.id === id);
+  if(!p) return;
+  if(!Array.isArray(stato.cestino)) stato.cestino = [];
+  stato.cestino.unshift({ piano: p, eliminatoIl: oggiISO() });
   stato.piani = stato.piani.filter(p => p.id !== id);
   if(stato.pianoAttivo === id){
     stato.pianoAttivo = stato.piani.length ? stato.piani[0].id : null;
   }
   salvaDati();
-  render();
+  render();  mostraNotaBackup('«' + p.nome + '» spostato nel cestino: lo trovi in «Piani eliminati».', 'ok');
 }
 
 // ---------- Logica calendario / cascata ----------
@@ -1123,11 +1137,67 @@ function renderSidebar(){
   stato.piani.forEach(p => {
     const tab = document.createElement('div');
     tab.className = 'tab-piano' + (p.id===stato.pianoAttivo ? ' attivo':'');
-    tab.innerHTML = `<span>${escapeHtml(p.nome)}</span><span class="elimina-tab" title="Elimina">✕</span>`;
+    tab.innerHTML = `<span>${escapeHtml(p.nome)}</span>`;
     tab.addEventListener('click', ()=>{ stato.pianoAttivo = p.id; salvaDati(); render(); });
-    tab.querySelector('.elimina-tab').addEventListener('click', (ev)=>eliminaPiano(p.id, ev));
     cont.appendChild(tab);
   });
+  renderCestino();
+}
+
+// ---------- Eliminazione protetta e cestino ----------
+// Per eliminare un piano lo si sceglie da un elenco a discesa; il piano va nel cestino e si può ripristinare.
+let cestinoAperto = false, eliminaAperto = false;
+function renderCestino(){
+  const cont = document.getElementById('sezione-cestino');
+  if(!cont) return;
+  const cestino = stato.cestino || [];
+  cont.innerHTML = `
+    <details class="sezione-cestino" id="det-elimina" ${eliminaAperto ? 'open' : ''}>
+      <summary>Elimina un piano</summary>
+      <select id="sel-elimina-piano">
+        <option value="">scegli il piano da eliminare…</option>
+        ${stato.piani.map(p => `<option value="${p.id}">${escapeHtml(p.nome)}</option>`).join('')}
+      </select>
+      <button class="btn-piccolo rosso" id="btn-elimina-piano" disabled>Sposta nel cestino</button>
+    </details>
+    ${cestino.length ? `
+    <details class="sezione-cestino" id="det-cestino" ${cestinoAperto ? 'open' : ''}>
+      <summary>Piani eliminati (${cestino.length})</summary>
+      ${cestino.map((c, i) => `<div class="riga-cestino">
+        <div>${escapeHtml(c.piano.nome)}<div class="data-cestino">eliminato il ${formattaDataBreve(c.eliminatoIl)}</div></div>
+        <div style="display:flex; gap:4px;">
+          <button class="btn-piccolo" data-ripristina="${i}">Ripristina</button>
+          <button class="btn-piccolo rosso" data-definitivo="${i}" title="Elimina per sempre">✕</button>
+        </div></div>`).join('')}
+    </details>` : ''}`;
+  cont.querySelector('#det-elimina').addEventListener('toggle', e => eliminaAperto = e.target.open);
+  const detC = cont.querySelector('#det-cestino');
+  if(detC) detC.addEventListener('toggle', e => cestinoAperto = e.target.open);
+  const sel = cont.querySelector('#sel-elimina-piano');
+  const btn = cont.querySelector('#btn-elimina-piano');
+  sel.addEventListener('change', ()=> btn.disabled = !sel.value);
+  btn.addEventListener('click', ()=>{
+    const p = stato.piani.find(x => x.id === sel.value);
+    if(!p) return;
+    if(!confirm('Spostare «' + p.nome + '» nel cestino?\n\nPotrai ripristinarlo da «Piani eliminati».')) return;
+    eliminaPiano(p.id);
+  });
+  cont.querySelectorAll('[data-ripristina]').forEach(b => b.addEventListener('click', ()=>{
+    const i = Number(b.dataset.ripristina);
+    const c = stato.cestino[i];
+    stato.cestino.splice(i, 1);
+    stato.piani.push(c.piano);
+    stato.pianoAttivo = c.piano.id;
+    salvaDati(); render();
+    mostraNotaBackup('«' + c.piano.nome + '» ripristinato.', 'ok');
+  }));
+  cont.querySelectorAll('[data-definitivo]').forEach(b => b.addEventListener('click', ()=>{
+    const i = Number(b.dataset.definitivo);
+    const c = stato.cestino[i];
+    if(!confirm('Eliminare PER SEMPRE «' + c.piano.nome + '»? Questa volta non si potrà recuperare.')) return;
+    stato.cestino.splice(i, 1);
+    salvaDati(); render();
+  }));
 }
 
 function escapeHtml(s){
@@ -2519,6 +2589,7 @@ function importaBackup(file){
       if(!conferma) return;
       stato = statoImportato;
       if(!Array.isArray(stato.civica)) stato.civica = [];
+      if(!Array.isArray(stato.cestino)) stato.cestino = [];
       if(!stato.festeConfig) stato.festeConfig = { anno: 2026, nome:'San Saturnino', giorno:30, mese:10 };
       if(!stato.pianoAttivo && stato.piani.length) stato.pianoAttivo = stato.piani[0].id;
       salvaDati();
