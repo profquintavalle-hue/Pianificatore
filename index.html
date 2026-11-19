@@ -478,6 +478,11 @@
   .riga-civica input[type=text]{ flex:1; min-width:220px; padding:6px 8px; border:1px solid var(--bordo); border-radius:6px; font-family:inherit; }
   .riga-civica input[type=date]{ padding:6px 8px; border:1px solid var(--bordo); border-radius:6px; }
   .riga-civica input[type=number]{ width:60px; padding:6px 8px; border:1px solid var(--bordo); border-radius:6px; }
+  .dettagli-civica{ margin:-6px 0 14px 2px; font-size:0.82rem; }
+  .dettagli-civica summary{ cursor:pointer; color:#A84A6E; font-weight:600; margin-bottom:6px; }
+  .dettagli-civica label{ display:block; font-size:0.75rem; color:var(--inchiostro-tenue); margin:8px 0 3px; }
+  .dettagli-civica textarea{ width:100%; box-sizing:border-box; padding:6px 8px; border:1px solid var(--bordo); border-radius:6px; font-family:inherit; font-size:0.83rem; background:#fff; resize:vertical; }
+  .dettagli-civica .riga-precompila{ margin-top:10px; }
   .info-civica{ font-size:0.78rem; color:#A84A6E; margin:0 0 12px 2px; }
   .info-civica.problema{ color:var(--ruggine); font-weight:600; }
   .verifica-etichetta{
@@ -559,7 +564,7 @@
 <div class="app">
   <div class="sidebar" id="sidebar">
     <h1>Pianificatore</h1>
-    <div class="sottotitolo">Moduli didattici &middot; a cascata &middot; v. 2.3</div>
+    <div class="sottotitolo">Moduli didattici &middot; a cascata &middot; v. 2.4</div>
     <div id="lista-tab"></div>
     <button class="btn-nuovo-piano" id="btn-nuovo-piano">+ nuovo piano (classe/materia)</button>
     <div class="sezione-backup">
@@ -1132,7 +1137,7 @@ function escapeHtml(s){
 }
 
 function catturaStatoPannelli(){
-  const ids = ['pannello-impostazioni','pannello-moduli','pannello-eccezioni'];
+  const ids = ['pannello-impostazioni','pannello-civica','pannello-moduli','pannello-eccezioni'];
   const stato = {};
   ids.forEach(id=>{
     const el = document.getElementById(id);
@@ -1733,7 +1738,15 @@ function finestraContenutiPerMese(piano, calcolo){
     nome: MESI_LABEL[m.mese].charAt(0).toUpperCase() + MESI_LABEL[m.mese].slice(1),
     voci: m.voci.map(v => ({ titolo: v.titolo, argomenti: v.argomenti, civica: v.civica }))
   }));
-  const dati = { spuntati: prepara(false), tutti: prepara(true) };
+  const progetti = progettiCivicaClasse(piano);
+  const materie = stato.piani.filter(p => stessaClasse(p, piano)).map(p => (p.materia || '').toUpperCase()).filter(Boolean);
+  const civica = progetti.length ? {
+    frase: 'La Programmazione individuale di Educazione civica si inserisce nella Programmazione delle attività decisa dal Consiglio di Classe ed è in linea con quanto stabilito dal Piano di Istituto. Per le materie ' +
+      (materie.length ? materie.join(' e ') : 'FILOSOFIA e STORIA') + ' è previsto un monte ore pari a ' + monteOreCivica(piano) + ' ore.',
+    progetti: progetti.map(c => ({ titolo: c.titolo || '', area: c.area || '', contenuti: c.contenuti || '', attivita: c.attivita || '',
+      compTrasversali: c.compTrasversali || '', compSpecifiche: c.compSpecifiche || '' }))
+  } : null;
+  const dati = { spuntati: prepara(false), tutti: prepara(true), civica };
   const datiJS = JSON.stringify(dati).replace(/</g, '\\u003c');
 
   const html = `<!DOCTYPE html><html lang="it"><head><meta charset="UTF-8">
@@ -1754,7 +1767,13 @@ function finestraContenutiPerMese(piano, calcolo){
     button.ok{ background:#3E7C74; color:#fff; }
     .barra{ margin-bottom:14px; display:flex; gap:14px; align-items:center; font-size:12px; color:#6b5d4d; flex-wrap:wrap; }
     .barra label{ cursor:pointer; }
-    @media print{ .az, .barra{ display:none; } body{ background:#fff; margin:0; } }
+    h2{ font-size:16px; color:#A84A6E; margin:30px 0 8px; }
+    .frase{ font-size:13px; background:#fff; padding:10px; border:1px solid #ddd2c0; border-radius:6px; margin-bottom:12px; }
+    table.civ th{ font-size:11px; text-transform:uppercase; letter-spacing:.04em; color:#6b5d4d; text-align:left; padding:6px 10px; border-bottom:2px solid #ddd2c0; background:#fdf6ea; }
+    table.civ td{ white-space:pre-wrap; width:25%; }
+    table.civ td button{ margin-top:8px; }
+    .titprog{ font-weight:bold; margin:14px 0 6px; }
+    @media print{ .az, .barra, button{ display:none; } body{ background:#fff; margin:0; } }
   </style></head><body>
     <h1>Contenuti per mese — ${escapeHtml(piano.nome)}</h1>
     <div class="sotto">${formattaDataBreve(piano.dataInizio)} – ${formattaDataBreve(piano.dataFine)}</div>
@@ -1766,6 +1785,7 @@ function finestraContenutiPerMese(piano, calcolo){
     </div>
     <div class="barra"><span>Oppure usa «Copia» accanto a ogni mese e incolla nella cella corrispondente del modello.</span></div>
     <table><tbody id="corpo"></tbody></table>
+    <div id="civica"></div>
     <script>
       const DATI = ${datiJS};
       function esc(t){ return String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
@@ -1793,8 +1813,19 @@ function finestraContenutiPerMese(piano, calcolo){
         document.body.removeChild(ta);
       }
       function copia(k, btn){ scrivi(testoMese(DATI[scelta()][k]), btn); }
+      function disegnaCivica(){
+        const c = DATI.civica, box = document.getElementById('civica');
+        if(!c){ box.innerHTML = ''; return; }
+        const campi = [['contenuti','Contenuti'],['attivita','Attività'],['compTrasversali','Competenze trasversali'],['compSpecifiche','Competenze specifiche']];
+        box.innerHTML = '<h2>Educazione civica</h2><div class="frase">' + esc(c.frase) + '<br><button onclick="scrivi(DATI.civica.frase, this)">Copia</button></div>' +
+          c.progetti.map((p, i) => '<div class="titprog">' + esc(p.titolo || 'Progetto') + (p.area ? ' — Area: ' + esc(p.area) : '') + '</div>' +
+            '<table class="civ"><thead><tr>' + campi.map(f => '<th>' + f[1] + '</th>').join('') + '</tr></thead><tbody><tr>' +
+            campi.map(f => '<td>' + (p[f[0]] ? esc(p[f[0]]) + '<br><button onclick="scrivi(DATI.civica.progetti[' + i + '].' + f[0] + ', this)">Copia</button>' : '<span class="vuoto">— da compilare nel pianificatore</span>') + '</td>').join('') +
+            '</tr></tbody></table>').join('');
+      }
       function copiaTutto(btn){ scrivi(DATI[scelta()].map(m => m.nome + '\\t' + testoMese(m).replace(/\\n/g, ' — ')).join('\\n'), btn); }
       disegna();
+      disegnaCivica();
     <\/script>
   </body></html>`;
 
@@ -1844,6 +1875,13 @@ function inserisciModuli(piano, nuovi){
   piano.moduli.splice(idx + 1, 0, ...nuovi);
 }
 
+const CAMPI_CIVICA = [['area','Area (es. Costituzione)',1],['contenuti','Contenuti',4],['attivita','Attività',4],['compTrasversali','Competenze trasversali',3],['compSpecifiche','Competenze specifiche',3]];
+let apertiCivica = new Set();
+// Monte ore di educazione civica della classe (somma delle lezioni previste nei progetti).
+function monteOreCivica(piano){
+  return progettiCivicaClasse(piano).reduce((s, c) => s + (Number(c.lezioni) || 0), 0);
+}
+
 function renderCivica(piano){
   const cont = document.getElementById('lista-civica');
   if(!cont) return;
@@ -1876,6 +1914,32 @@ function renderCivica(piano){
         (r.mancanti > 0 ? ' — mancano ' + r.mancanti + ' lezioni prima della fine del periodo' : '')
       : 'Nessuna lezione disponibile da quel giorno in poi.';
     cont.appendChild(info);
+
+    // dettagli del progetto (per la tabella di educazione civica del modello della scuola)
+    const det = document.createElement('details');
+    det.className = 'dettagli-civica';
+    if(apertiCivica.has(c.id)) det.open = true;
+    det.addEventListener('toggle', ()=>{ if(det.open) apertiCivica.add(c.id); else apertiCivica.delete(c.id); });
+    const altri = (stato.civica || []).filter(x => x.id !== c.id && !stessaClasse(x, piano) && CAMPI_CIVICA.some(([k]) => (x[k]||'').trim()));
+    det.innerHTML = `<summary>Dettagli del progetto (per la programmazione)</summary>
+      ${CAMPI_CIVICA.map(([k, et, righe]) => `<label>${et}</label><textarea rows="${righe}" data-campo="${k}">${escapeHtml(c[k] || '')}</textarea>`).join('')}
+      ${altri.length ? `<div class="riga-precompila">
+        <span>Copia i dettagli da</span>
+        <select data-copia>${altri.map(x => `<option value="${x.id}">${x.anno}${x.sezione}${x.titolo ? ' — ' + escapeHtml(x.titolo) : ''}</option>`).join('')}</select>
+        <button class="btn-precompila" data-copia-btn>Copia</button></div>` : ''}`;
+    det.querySelectorAll('textarea').forEach(t => t.addEventListener('input', e=>{ c[t.dataset.campo] = e.target.value; salvaDati(); }));
+    const btnCopia = det.querySelector('[data-copia-btn]');
+    if(btnCopia) btnCopia.addEventListener('click', ()=>{
+      const da = stato.civica.find(x => x.id === det.querySelector('[data-copia]').value);
+      if(!da) return;
+      const pieni = CAMPI_CIVICA.some(([k]) => (c[k]||'').trim());
+      if(pieni && !confirm('Sostituire i dettagli già scritti con quelli di ' + da.anno + da.sezione + '?')) return;
+      CAMPI_CIVICA.forEach(([k]) => c[k] = da[k] || '');
+      if(!(c.titolo||'').trim()) c.titolo = da.titolo || '';
+      apertiCivica.add(c.id);
+      salvaDati(); render();
+    });
+    cont.appendChild(det);
   });
 }
 
