@@ -533,7 +533,7 @@
 <div class="app">
   <div class="sidebar" id="sidebar">
     <h1>Pianificatore</h1>
-    <div class="sottotitolo">Moduli didattici &middot; a cascata &middot; v. 2.1</div>
+    <div class="sottotitolo">Moduli didattici &middot; a cascata &middot; v. 2.2</div>
     <div id="lista-tab"></div>
     <button class="btn-nuovo-piano" id="btn-nuovo-piano">+ nuovo piano (classe/materia)</button>
     <div class="sezione-backup">
@@ -1579,6 +1579,109 @@ function esportaCronoProgrammaWord(piano, calcolo){
   URL.revokeObjectURL(url);
 }
 
+// ---------- Contenuti per mese (per la tabella del modello di programmazione della scuola) ----------
+// Per ogni mese del periodo elenca i moduli spiegati in quel mese (date delle lezioni di spiegazione).
+// Nel primo mese il modulo compare con gli argomenti spuntati; nei mesi successivi con "(prosecuzione)".
+function contenutiPerMese(piano, calcolo){
+  const inizio = parseISO(piano.dataInizio), fine = parseISO(piano.dataFine);
+  const mesi = [];
+  let cur = new Date(inizio.getFullYear(), inizio.getMonth(), 1);
+  while(cur <= fine){
+    mesi.push({ anno: cur.getFullYear(), mese: cur.getMonth(), voci: [] });
+    cur = new Date(cur.getFullYear(), cur.getMonth()+1, 1);
+  }
+  calcolo.righe.forEach((r, i) => {
+    if(!r.lezioniAssegnate) return;
+    const dIn = parseISO(r.dataInizio), dFi = parseISO(r.dataFine);
+    let primo = true;
+    mesi.forEach(m => {
+      const iniMese = new Date(m.anno, m.mese, 1), fineMese = new Date(m.anno, m.mese+1, 0);
+      if(dIn <= fineMese && dFi >= iniMese){
+        const arg = argomentiSpuntati(r.modulo);
+        m.voci.push({
+          titolo: r.modulo.nome + (primo ? '' : ' (prosecuzione)'),
+          argomenti: primo ? arg : []
+        });
+        primo = false;
+      }
+    });
+  });
+  return mesi;
+}
+
+function finestraContenutiPerMese(piano, calcolo){
+  if(!piano.dataInizio || !piano.dataFine || !piano.moduli.length){
+    alert('Servono le date del periodo e almeno un modulo.'); return;
+  }
+  const mesi = contenutiPerMese(piano, calcolo);
+  const testoMese = m => m.voci.map(v => v.titolo + (v.argomenti.length ? ': ' + v.argomenti.join('; ') + '.' : '')).join('\n');
+  const testoTutto = mesi.map(m => {
+    const nome = MESI_LABEL[m.mese].charAt(0).toUpperCase() + MESI_LABEL[m.mese].slice(1);
+    return nome + '\t' + (testoMese(m).replace(/\n/g, ' — ') || '');
+  }).join('\n');
+
+  let righe = '';
+  mesi.forEach((m, k) => {
+    const nome = MESI_LABEL[m.mese].charAt(0).toUpperCase() + MESI_LABEL[m.mese].slice(1);
+    const corpo = m.voci.length
+      ? m.voci.map(v => `<div class="voce"><b>${escapeHtml(v.titolo)}</b>${v.argomenti.length ? '<div class="arg">' + v.argomenti.map(escapeHtml).join('; ') + '.</div>' : ''}</div>`).join('')
+      : '<span class="vuoto">—</span>';
+    righe += `<tr><td class="mese">${nome}</td><td>${corpo}</td>
+      <td class="az">${m.voci.length ? `<button onclick="copia(${k}, this)">Copia</button>` : ''}</td></tr>`;
+  });
+
+  const datiJS = JSON.stringify(mesi.map(testoMese)).replace(/</g, '\\u003c');
+  const tuttoJS = JSON.stringify(testoTutto).replace(/</g, '\\u003c');
+
+  const html = `<!DOCTYPE html><html lang="it"><head><meta charset="UTF-8">
+  <title>Contenuti per mese — ${escapeHtml(piano.nome)}</title><style>
+    body{ font-family:Georgia, 'Times New Roman', serif; color:#33291f; background:#fffaf2; margin:28px; line-height:1.45; }
+    h1{ font-size:20px; margin:0 0 4px; color:#2c6b5f; }
+    .sotto{ font-size:12px; color:#6b5d4d; margin-bottom:18px; }
+    table{ width:100%; border-collapse:collapse; font-size:13px; background:#fff; }
+    td{ border-bottom:1px solid #ddd2c0; padding:8px 10px; vertical-align:top; }
+    td.mese{ width:110px; font-weight:bold; color:#2c6b5f; }
+    td.az{ width:80px; text-align:right; }
+    .voce{ margin-bottom:4px; }
+    .arg{ font-size:12px; color:#6b5d4d; margin-top:1px; }
+    .vuoto{ color:#b7a990; }
+    button{ font-family:inherit; font-size:12px; padding:5px 12px; border:1px solid #3E7C74; background:#fff; color:#2c6b5f; border-radius:6px; cursor:pointer; }
+    button:hover{ background:#e8f2ef; }
+    button.ok{ background:#3E7C74; color:#fff; }
+    .barra{ margin-bottom:14px; display:flex; gap:10px; align-items:center; font-size:12px; color:#6b5d4d; }
+    @media print{ .az, .barra{ display:none; } body{ background:#fff; margin:0; } }
+  </style></head><body>
+    <h1>Contenuti per mese — ${escapeHtml(piano.nome)}</h1>
+    <div class="sotto">${formattaDataBreve(piano.dataInizio)} – ${formattaDataBreve(piano.dataFine)}</div>
+    <div class="barra"><button onclick="copiaTutto(this)">Copia tutta la tabella</button>
+      <span>Oppure usa «Copia» accanto a ogni mese e incolla nella cella corrispondente del modello.</span></div>
+    <table><tbody>${righe}</tbody></table>
+    <script>
+      const DATI = ${datiJS};
+      const TUTTO = ${tuttoJS};
+      function scrivi(testo, btn){
+        const fatto = () => { const t = btn.textContent; btn.textContent = 'Copiato ✓'; btn.classList.add('ok');
+          setTimeout(()=>{ btn.textContent = t; btn.classList.remove('ok'); }, 1500); };
+        if(navigator.clipboard && navigator.clipboard.writeText){
+          navigator.clipboard.writeText(testo).then(fatto, () => vecchioModo(testo, fatto));
+        } else vecchioModo(testo, fatto);
+      }
+      function vecchioModo(testo, fatto){
+        const ta = document.createElement('textarea'); ta.value = testo; document.body.appendChild(ta);
+        ta.select(); try{ document.execCommand('copy'); fatto(); }catch(e){ alert('Copia non riuscita: seleziona il testo col mouse.'); }
+        document.body.removeChild(ta);
+      }
+      function copia(k, btn){ scrivi(DATI[k], btn); }
+      function copiaTutto(btn){ scrivi(TUTTO, btn); }
+    <\/script>
+  </body></html>`;
+
+  const w = window.open('', '_blank');
+  if(!w){ alert('Il browser ha bloccato la finestra. Consenti i popup per questo sito e riprova.'); return; }
+  w.document.write(html);
+  w.document.close();
+}
+
 function formattaDataBreve(iso){
   if(!iso) return '';
   const d = parseISO(iso);
@@ -1957,6 +2060,7 @@ function renderPannelloDiagramma(piano, calcolo){
       <h3>Diagramma</h3>
       <button class="btn-aggiungi" id="btn-esporta-word">⤓ esporta programmazione (RTF — Word/Pages)</button>
       <button class="btn-aggiungi" id="btn-report-grafico">⤓ report con grafico (per gli studenti)</button>
+      <button class="btn-aggiungi" id="btn-contenuti-mese">⤓ contenuti per mese (modello della scuola)</button>
     </div>
     ${sfora>0
       ? `<div class="banner-sforo">⚠︎ Stai sforando di <b>${sfora}</b> ${sfora===1?'lezione':'lezioni'}: la programmazione richiede <b>${totServe}</b> lezioni (${totSpieg} di spiegazione + ${totVerif+sfora} di verifica) ma nel periodo ne hai solo <b>${calcolo.lezioniTotali}</b>.</div>`
@@ -1978,6 +2082,7 @@ function renderPannelloDiagramma(piano, calcolo){
   `;
   document.getElementById('btn-esporta-word').addEventListener('click', ()=> esportaCronoProgrammaWord(piano, calcolo));
   document.getElementById('btn-report-grafico').addEventListener('click', ()=> reportConGrafico(piano, calcolo));
+  document.getElementById('btn-contenuti-mese').addEventListener('click', ()=> finestraContenutiPerMese(piano, calcolo));
   renderGantt(piano, calcolo);
 }
 
