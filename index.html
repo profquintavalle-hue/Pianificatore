@@ -454,6 +454,32 @@
     border-right:2px solid var(--ambra);
     pointer-events:auto;
   }
+  .civica-banda{
+    position:absolute;
+    top:0; bottom:0;
+    background:rgba(168,74,110,0.14);
+    border-left:2px solid #A84A6E;
+    border-right:2px solid #A84A6E;
+  }
+  .civica-etichetta{
+    position:absolute;
+    top:-2px;
+    left:2px;
+    font-size:0.62rem;
+    color:#A84A6E;
+    font-weight:700;
+    white-space:nowrap;
+    background:var(--carta);
+    padding:0 3px;
+    border-radius:3px;
+  }
+  .giorno-cella.civica{ background:#A84A6E; color:var(--carta); font-weight:700; }
+  .riga-civica{ display:flex; align-items:center; gap:10px; font-size:0.83rem; flex-wrap:wrap; margin-bottom:4px; }
+  .riga-civica input[type=text]{ flex:1; min-width:220px; padding:6px 8px; border:1px solid var(--bordo); border-radius:6px; font-family:inherit; }
+  .riga-civica input[type=date]{ padding:6px 8px; border:1px solid var(--bordo); border-radius:6px; }
+  .riga-civica input[type=number]{ width:60px; padding:6px 8px; border:1px solid var(--bordo); border-radius:6px; }
+  .info-civica{ font-size:0.78rem; color:#A84A6E; margin:0 0 12px 2px; }
+  .info-civica.problema{ color:var(--ruggine); font-weight:600; }
   .verifica-etichetta{
     position:absolute;
     bottom:-2px;
@@ -533,7 +559,7 @@
 <div class="app">
   <div class="sidebar" id="sidebar">
     <h1>Pianificatore</h1>
-    <div class="sottotitolo">Moduli didattici &middot; a cascata &middot; v. 2.2</div>
+    <div class="sottotitolo">Moduli didattici &middot; a cascata &middot; v. 2.3</div>
     <div id="lista-tab"></div>
     <button class="btn-nuovo-piano" id="btn-nuovo-piano">+ nuovo piano (classe/materia)</button>
     <div class="sezione-backup">
@@ -572,6 +598,7 @@ function salvaDati(){
 
 let stato = caricaDati();
 if(!stato.festeConfig) stato.festeConfig = { anno: (new Date().getMonth() >= 8 ? new Date().getFullYear() : new Date().getFullYear()-1), nome:'San Saturnino', giorno:30, mese:10 };
+if(!Array.isArray(stato.civica)) stato.civica = []; // progetti di educazione civica, per classe
 // Promemoria backup: confrontiamo l'ultima modifica con l'ultimo salvataggio su file.
 let ultimaModifica = 0;   // impostata da salvaDati()
 let ultimoBackup = 0;     // impostata da esportaBackup()
@@ -697,7 +724,7 @@ function inFestivita(iso, festivita){
 
 // Restituisce l'elenco ordinato di date-lezione (ISO) per un piano,
 // tenendo conto di giorni settimanali, festività e eccezioni (saltate/extra)
-function calcolaLezioniDisponibili(piano){
+function calcolaLezioniBase(piano){
   const saltate = new Set(piano.eccezioni.filter(e=>e.tipo==='saltata').map(e=>e.data));
   const extra = piano.eccezioni.filter(e=>e.tipo==='extra').map(e=>e.data);
   const risultato = [];
@@ -716,6 +743,54 @@ function calcolaLezioniDisponibili(piano){
   extra.forEach(iso => { if(!risultato.includes(iso)) risultato.push(iso); });
   risultato.sort();
   return risultato;
+}
+
+// ---------- Educazione civica ----------
+// Ogni progetto vale per una classe (anno + sezione) e prende, a partire dal giorno d'inizio,
+// le prime N lezioni dei piani di quella classe (Filosofia e Storia insieme, in ordine di data).
+// Quelle lezioni vengono tolte ai moduli, come una festività, ma restano contate come educazione civica.
+function stessaClasse(a, b){
+  return a.anno && a.sezione && String(a.anno) === String(b.anno) && a.sezione === b.sezione;
+}
+function progettiCivicaClasse(piano){
+  return (stato.civica || []).filter(c => stessaClasse(c, piano));
+}
+function calcolaCivicaClasse(piano){
+  // restituisce, per ogni progetto della classe, le lezioni assegnate { iso, pianoId }
+  const fratelli = stato.piani.filter(p => stessaClasse(p, piano));
+  const ordineMateria = p => (p.materia === 'Filosofia' ? 0 : 1);
+  const tutte = [];
+  fratelli.forEach(p => calcolaLezioniBase(p).forEach(iso => tutte.push({ iso, pianoId: p.id, materia: p.materia || p.nome, ordine: ordineMateria(p) })));
+  tutte.sort((x, y) => x.iso < y.iso ? -1 : x.iso > y.iso ? 1 : x.ordine - y.ordine);
+  const prese = new Set();
+  return progettiCivicaClasse(piano)
+    .slice().sort((a, b) => (a.inizio || '') < (b.inizio || '') ? -1 : 1)
+    .map(c => {
+      const n = Math.max(0, Number(c.lezioni) || 0);
+      const scelte = [];
+      if(c.inizio){
+        for(const l of tutte){
+          if(scelte.length >= n) break;
+          const chiave = l.iso + '|' + l.pianoId;
+          if(l.iso < c.inizio || prese.has(chiave)) continue;
+          prese.add(chiave); scelte.push(l);
+        }
+      }
+      const perMateria = {};
+      scelte.forEach(l => perMateria[l.materia] = (perMateria[l.materia] || 0) + 1);
+      return { progetto: c, lezioni: scelte, perMateria, mancanti: n - scelte.length,
+               dal: scelte.length ? scelte[0].iso : null, al: scelte.length ? scelte[scelte.length-1].iso : null };
+    });
+}
+function lezioniCivicaDelPiano(piano){
+  // [{ iso, progetto }] solo per questo piano
+  const out = [];
+  calcolaCivicaClasse(piano).forEach(r => r.lezioni.forEach(l => { if(l.pianoId === piano.id) out.push({ iso: l.iso, progetto: r.progetto }); }));
+  return out.sort((a, b) => a.iso < b.iso ? -1 : 1);
+}
+function calcolaLezioniDisponibili(piano){
+  const civ = new Set(lezioniCivicaDelPiano(piano).map(l => l.iso));
+  return calcolaLezioniBase(piano).filter(iso => !civ.has(iso));
 }
 
 // Nomi dei moduli su cui verte la verifica: quello a cui è agganciata più
@@ -876,7 +951,7 @@ function calcolaPianificazione(piano){
     });
   });
 
-  return { lezioni, righe, verifiche: verifichePianificate, overflowTotale, lezioniUsate: cursore, lezioniTotali: lezioni.length };
+  return { lezioni, righe, verifiche: verifichePianificate, overflowTotale, lezioniUsate: cursore, lezioniTotali: lezioni.length, civica: lezioniCivicaDelPiano(piano) };
 }
 
 
@@ -1152,6 +1227,15 @@ function renderMain(){
       </div>
     </details>
 
+    <details class="pannello" id="pannello-civica">
+      <summary>Educazione civica</summary>
+      <div class="sotto-intestazione" style="margin-bottom:12px;">${piano.anno && piano.sezione
+        ? 'Vale per tutti i piani della classe <b>' + piano.anno + piano.sezione + '</b> (Filosofia e Storia insieme). Scrivi il giorno d\'inizio e quante lezioni ti servono: il pianificatore prende le prime lezioni disponibili delle due materie, le toglie ai moduli e ti dice quando finisce.'
+        : 'Per usare l\'educazione civica indica prima anno e sezione del piano (in alto).'}</div>
+      <div id="lista-civica"></div>
+      ${piano.anno && piano.sezione ? '<button class="btn-aggiungi" id="btn-aggiungi-civica">+ aggiungi progetto di educazione civica</button>' : ''}
+    </details>
+
     <details class="pannello" open id="pannello-moduli">
       <summary>Moduli</summary>
       <div id="barra-sposta-moduli"></div>
@@ -1213,6 +1297,7 @@ function renderMain(){
         <span><i style="background:var(--ruggine)"></i>saltata</span>
         <span><i style="background:var(--oliva)"></i>extra / recupero</span>
         <span><i style="background:var(--ambra)"></i>verifica</span>
+        <span><i style="background:#A84A6E"></i>educazione civica</span>
       </div>
     </details>
 
@@ -1284,6 +1369,13 @@ function renderMain(){
   });
   document.getElementById('btn-aggiungi-festivita').addEventListener('click', ()=>{
     piano.festivita.push({ da: piano.dataInizio, a: piano.dataInizio, etichetta:'Vacanza' });
+    salvaDati(); render();
+  });
+
+  renderCivica(piano);
+  const btnCiv = document.getElementById('btn-aggiungi-civica');
+  if(btnCiv) btnCiv.addEventListener('click', ()=>{
+    stato.civica.push({ id: idCasuale(), anno: String(piano.anno), sezione: piano.sezione, titolo: '', inizio: piano.dataInizio, lezioni: 7 });
     salvaDati(); render();
   });
 
@@ -1413,6 +1505,17 @@ function reportConGrafico(piano, calcolo){
     </div>`;
   });
 
+  gruppiCivica(calcolo).forEach(g => {
+    const dIn = parseISO(g.dal), dFi = parseISO(g.al);
+    const left = Math.max(0, (dIn - inizio)/86400000 / totaleGiorni * 100);
+    const width = Math.max(1.5, ((dFi - dIn)/86400000 + 1) / totaleGiorni * 100);
+    barre += `<div class="riga-g">
+      <div class="etichetta-g">Educazione civica</div>
+      <div class="pista"><div class="barra" style="left:${left}%; width:${width}%; background:#A84A6E">
+        ${formattaDataBreve(g.dal)} – ${formattaDataBreve(g.al)}</div></div>
+    </div>`;
+  });
+
   let righeTab = '';
   calcolo.righe.forEach((r, i) => {
     const argR = argomentiSpuntati(r.modulo);
@@ -1474,7 +1577,8 @@ function reportConGrafico(piano, calcolo){
     </div>
 
     <div class="blocco"><h2>Moduli</h2>
-    <table><thead><tr><th>Modulo</th><th>Lezioni</th><th>Verifica</th><th>Periodo</th></tr></thead><tbody>${righeTab}</tbody></table></div>
+    <table><thead><tr><th>Modulo</th><th>Lezioni</th><th>Verifica</th><th>Periodo</th></tr></thead><tbody>${righeTab}</tbody></table>
+    ${gruppiCivica(calcolo).map(g => '<p style="font-size:12px; color:#A84A6E; margin:8px 0 0;">' + escapeHtml(testoCivica(g)) + '</p>').join('')}</div>
 
     <div class="blocco"><h2>Calendario delle verifiche</h2>
     <p style="font-size:11px; color:#6b5d4d; margin:0 0 8px;">Le date potranno subire lievi variazioni in base allo svolgimento effettivo del programma.</p>
@@ -1525,6 +1629,10 @@ function esportaCronoProgrammaWord(piano, calcolo){
       String(r.lezioniPreviste + r.lezioniVerifica),
       formattaDataBreve(r.dataInizio) + ' \u2013 ' + formattaDataBreve(r.dataFineTotale) + (r.overflow ? ' (lezioni insufficienti)' : '')
     ]);
+  });
+
+  gruppiCivica(calcolo).forEach(g => {
+    rtf += '{\\pard\\sb120\\fs20 ' + rtfEscape(testoCivica(g)) + '\\par}\n';
   });
 
   if((calcolo.verifiche||[]).length > 0){
@@ -1580,9 +1688,10 @@ function esportaCronoProgrammaWord(piano, calcolo){
 }
 
 // ---------- Contenuti per mese (per la tabella del modello di programmazione della scuola) ----------
-// Per ogni mese del periodo elenca i moduli spiegati in quel mese (date delle lezioni di spiegazione).
-// Nel primo mese il modulo compare con gli argomenti spuntati; nei mesi successivi con "(prosecuzione)".
-function contenutiPerMese(piano, calcolo){
+// Per ogni mese del periodo elenca, in ordine di data, i moduli spiegati in quel mese e i progetti
+// di educazione civica. Nel primo mese il modulo compare con gli argomenti; poi con "(prosecuzione)".
+// tuttiGliArgomenti: true = tutti gli argomenti del modulo, false = solo quelli spuntati.
+function contenutiPerMese(piano, calcolo, tuttiGliArgomenti){
   const inizio = parseISO(piano.dataInizio), fine = parseISO(piano.dataFine);
   const mesi = [];
   let cur = new Date(inizio.getFullYear(), inizio.getMonth(), 1);
@@ -1590,22 +1699,29 @@ function contenutiPerMese(piano, calcolo){
     mesi.push({ anno: cur.getFullYear(), mese: cur.getMonth(), voci: [] });
     cur = new Date(cur.getFullYear(), cur.getMonth()+1, 1);
   }
-  calcolo.righe.forEach((r, i) => {
-    if(!r.lezioniAssegnate) return;
-    const dIn = parseISO(r.dataInizio), dFi = parseISO(r.dataFine);
+  const argomenti = m => tuttiGliArgomenti
+    ? (m.argomenti || []).map(a => (a.testo || '').trim().replace(/[.;]+$/, '')).filter(Boolean)
+    : argomentiSpuntati(m);
+  const aggiungi = (dal, al, titolo, arg, civica) => {
+    const dIn = parseISO(dal), dFi = parseISO(al);
     let primo = true;
     mesi.forEach(m => {
       const iniMese = new Date(m.anno, m.mese, 1), fineMese = new Date(m.anno, m.mese+1, 0);
       if(dIn <= fineMese && dFi >= iniMese){
-        const arg = argomentiSpuntati(r.modulo);
-        m.voci.push({
-          titolo: r.modulo.nome + (primo ? '' : ' (prosecuzione)'),
-          argomenti: primo ? arg : []
-        });
+        const ordine = toISO(dIn > iniMese ? dIn : iniMese);
+        m.voci.push({ ordine, civica, titolo: titolo + (primo ? '' : ' (prosecuzione)'), argomenti: primo ? arg : [] });
         primo = false;
       }
     });
+  };
+  calcolo.righe.forEach(r => {
+    if(!r.lezioniAssegnate) return;
+    aggiungi(r.dataInizio, r.dataFine, r.modulo.nome, argomenti(r.modulo), false);
   });
+  gruppiCivica(calcolo).forEach(g => {
+    aggiungi(g.dal, g.al, 'Educazione civica' + (g.titolo ? ': «' + g.titolo + '»' : ''), [], true);
+  });
+  mesi.forEach(m => m.voci.sort((x, y) => x.ordine < y.ordine ? -1 : x.ordine > y.ordine ? 1 : 0));
   return mesi;
 }
 
@@ -1613,25 +1729,12 @@ function finestraContenutiPerMese(piano, calcolo){
   if(!piano.dataInizio || !piano.dataFine || !piano.moduli.length){
     alert('Servono le date del periodo e almeno un modulo.'); return;
   }
-  const mesi = contenutiPerMese(piano, calcolo);
-  const testoMese = m => m.voci.map(v => v.titolo + (v.argomenti.length ? ': ' + v.argomenti.join('; ') + '.' : '')).join('\n');
-  const testoTutto = mesi.map(m => {
-    const nome = MESI_LABEL[m.mese].charAt(0).toUpperCase() + MESI_LABEL[m.mese].slice(1);
-    return nome + '\t' + (testoMese(m).replace(/\n/g, ' — ') || '');
-  }).join('\n');
-
-  let righe = '';
-  mesi.forEach((m, k) => {
-    const nome = MESI_LABEL[m.mese].charAt(0).toUpperCase() + MESI_LABEL[m.mese].slice(1);
-    const corpo = m.voci.length
-      ? m.voci.map(v => `<div class="voce"><b>${escapeHtml(v.titolo)}</b>${v.argomenti.length ? '<div class="arg">' + v.argomenti.map(escapeHtml).join('; ') + '.</div>' : ''}</div>`).join('')
-      : '<span class="vuoto">—</span>';
-    righe += `<tr><td class="mese">${nome}</td><td>${corpo}</td>
-      <td class="az">${m.voci.length ? `<button onclick="copia(${k}, this)">Copia</button>` : ''}</td></tr>`;
-  });
-
-  const datiJS = JSON.stringify(mesi.map(testoMese)).replace(/</g, '\\u003c');
-  const tuttoJS = JSON.stringify(testoTutto).replace(/</g, '\\u003c');
+  const prepara = tutti => contenutiPerMese(piano, calcolo, tutti).map(m => ({
+    nome: MESI_LABEL[m.mese].charAt(0).toUpperCase() + MESI_LABEL[m.mese].slice(1),
+    voci: m.voci.map(v => ({ titolo: v.titolo, argomenti: v.argomenti, civica: v.civica }))
+  }));
+  const dati = { spuntati: prepara(false), tutti: prepara(true) };
+  const datiJS = JSON.stringify(dati).replace(/</g, '\\u003c');
 
   const html = `<!DOCTYPE html><html lang="it"><head><meta charset="UTF-8">
   <title>Contenuti per mese — ${escapeHtml(piano.nome)}</title><style>
@@ -1643,22 +1746,40 @@ function finestraContenutiPerMese(piano, calcolo){
     td.mese{ width:110px; font-weight:bold; color:#2c6b5f; }
     td.az{ width:80px; text-align:right; }
     .voce{ margin-bottom:4px; }
+    .voce.civica b{ color:#A84A6E; }
     .arg{ font-size:12px; color:#6b5d4d; margin-top:1px; }
     .vuoto{ color:#b7a990; }
     button{ font-family:inherit; font-size:12px; padding:5px 12px; border:1px solid #3E7C74; background:#fff; color:#2c6b5f; border-radius:6px; cursor:pointer; }
     button:hover{ background:#e8f2ef; }
     button.ok{ background:#3E7C74; color:#fff; }
-    .barra{ margin-bottom:14px; display:flex; gap:10px; align-items:center; font-size:12px; color:#6b5d4d; }
+    .barra{ margin-bottom:14px; display:flex; gap:14px; align-items:center; font-size:12px; color:#6b5d4d; flex-wrap:wrap; }
+    .barra label{ cursor:pointer; }
     @media print{ .az, .barra{ display:none; } body{ background:#fff; margin:0; } }
   </style></head><body>
     <h1>Contenuti per mese — ${escapeHtml(piano.nome)}</h1>
     <div class="sotto">${formattaDataBreve(piano.dataInizio)} – ${formattaDataBreve(piano.dataFine)}</div>
-    <div class="barra"><button onclick="copiaTutto(this)">Copia tutta la tabella</button>
-      <span>Oppure usa «Copia» accanto a ogni mese e incolla nella cella corrispondente del modello.</span></div>
-    <table><tbody>${righe}</tbody></table>
+    <div class="barra">
+      <span>Argomenti:</span>
+      <label><input type="radio" name="arg" value="spuntati" checked onchange="disegna()"> solo quelli spuntati</label>
+      <label><input type="radio" name="arg" value="tutti" onchange="disegna()"> tutti</label>
+      <button onclick="copiaTutto(this)">Copia tutta la tabella</button>
+    </div>
+    <div class="barra"><span>Oppure usa «Copia» accanto a ogni mese e incolla nella cella corrispondente del modello.</span></div>
+    <table><tbody id="corpo"></tbody></table>
     <script>
       const DATI = ${datiJS};
-      const TUTTO = ${tuttoJS};
+      function esc(t){ return String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+      function scelta(){ return document.querySelector('input[name=arg]:checked').value; }
+      function testoMese(m){ return m.voci.map(v => v.titolo + (v.argomenti.length ? ': ' + v.argomenti.join('; ') + '.' : '')).join('\\n'); }
+      function disegna(){
+        const mesi = DATI[scelta()];
+        document.getElementById('corpo').innerHTML = mesi.map((m, k) => {
+          const corpo = m.voci.length
+            ? m.voci.map(v => '<div class="voce' + (v.civica ? ' civica' : '') + '"><b>' + esc(v.titolo) + '</b>' + (v.argomenti.length ? '<div class="arg">' + v.argomenti.map(esc).join('; ') + '.</div>' : '') + '</div>').join('')
+            : '<span class="vuoto">—</span>';
+          return '<tr><td class="mese">' + m.nome + '</td><td>' + corpo + '</td><td class="az">' + (m.voci.length ? '<button onclick="copia(' + k + ', this)">Copia</button>' : '') + '</td></tr>';
+        }).join('');
+      }
       function scrivi(testo, btn){
         const fatto = () => { const t = btn.textContent; btn.textContent = 'Copiato ✓'; btn.classList.add('ok');
           setTimeout(()=>{ btn.textContent = t; btn.classList.remove('ok'); }, 1500); };
@@ -1671,8 +1792,9 @@ function finestraContenutiPerMese(piano, calcolo){
         ta.select(); try{ document.execCommand('copy'); fatto(); }catch(e){ alert('Copia non riuscita: seleziona il testo col mouse.'); }
         document.body.removeChild(ta);
       }
-      function copia(k, btn){ scrivi(DATI[k], btn); }
-      function copiaTutto(btn){ scrivi(TUTTO, btn); }
+      function copia(k, btn){ scrivi(testoMese(DATI[scelta()][k]), btn); }
+      function copiaTutto(btn){ scrivi(DATI[scelta()].map(m => m.nome + '\\t' + testoMese(m).replace(/\\n/g, ' — ')).join('\\n'), btn); }
+      disegna();
     <\/script>
   </body></html>`;
 
@@ -1680,6 +1802,22 @@ function finestraContenutiPerMese(piano, calcolo){
   if(!w){ alert('Il browser ha bloccato la finestra. Consenti i popup per questo sito e riprova.'); return; }
   w.document.write(html);
   w.document.close();
+}
+
+// Raggruppa le lezioni di educazione civica del piano per progetto.
+function gruppiCivica(calcolo){
+  const g = {};
+  (calcolo.civica||[]).forEach(l => {
+    const k = l.progetto.id;
+    if(!g[k]) g[k] = { titolo: l.progetto.titolo || '', dal: l.iso, al: l.iso, n: 0, date: [] };
+    g[k].al = l.iso; g[k].n++; g[k].date.push(l.iso);
+  });
+  return Object.values(g).sort((a, b) => a.dal < b.dal ? -1 : 1);
+}
+function testoCivica(g){
+  return 'Educazione civica' + (g.titolo ? ': ' + g.titolo : '') + ' (' +
+    (g.dal === g.al ? formattaDataBreve(g.dal) : formattaDataBreve(g.dal) + ' \u2013 ' + formattaDataBreve(g.al)) +
+    '; ' + g.n + ' ' + (g.n===1 ? 'lezione' : 'lezioni') + ' in questa materia)';
 }
 
 function formattaDataBreve(iso){
@@ -1704,6 +1842,41 @@ function inserisciModuli(piano, nuovi){
   const idx = piano.moduli.findIndex(m => m.id === pos);
   if(pos === 'fine' || idx < 0){ piano.moduli = piano.moduli.concat(nuovi); return; }
   piano.moduli.splice(idx + 1, 0, ...nuovi);
+}
+
+function renderCivica(piano){
+  const cont = document.getElementById('lista-civica');
+  if(!cont) return;
+  cont.innerHTML = '';
+  if(!(piano.anno && piano.sezione)) return;
+  calcolaCivicaClasse(piano).forEach(r => {
+    const c = r.progetto;
+    const riga = document.createElement('div');
+    riga.className = 'riga-civica';
+    riga.innerHTML = `
+      <input type="text" value="${escapeHtml(c.titolo)}" placeholder="Titolo del progetto" data-campo="titolo">
+      <span>dal</span><input type="date" value="${c.inizio || ''}" data-campo="inizio">
+      <span>lezioni</span><input type="number" min="1" max="60" value="${c.lezioni}" data-campo="lezioni">
+      <button class="azione-icona elimina" title="Rimuovi">✕</button>`;
+    riga.querySelector('[data-campo=titolo]').addEventListener('input', e=>{ c.titolo = e.target.value; salvaDati(); });
+    riga.querySelector('[data-campo=titolo]').addEventListener('change', ()=> renderGanttOnly());
+    riga.querySelector('[data-campo=inizio]').addEventListener('change', e=>{ c.inizio = e.target.value; salvaDati(); render(); });
+    riga.querySelector('[data-campo=lezioni]').addEventListener('change', e=>{ c.lezioni = Math.max(1, Number(e.target.value)||1); salvaDati(); render(); });
+    riga.querySelector('.elimina').addEventListener('click', ()=>{
+      if(!confirm('Rimuovere questo progetto di educazione civica? Vale per tutti i piani della classe.')) return;
+      stato.civica = stato.civica.filter(x => x.id !== c.id); salvaDati(); render();
+    });
+    cont.appendChild(riga);
+    const info = document.createElement('div');
+    const parti = Object.entries(r.perMateria).sort((x, y) => x[0] === 'Filosofia' ? -1 : y[0] === 'Filosofia' ? 1 : 0).map(([m, n]) => m + ' ' + n);
+    info.className = 'info-civica' + (r.mancanti > 0 ? ' problema' : '');
+    info.innerHTML = r.lezioni.length
+      ? (r.dal === r.al ? 'il ' + formattaDataBreve(r.dal) : 'dal ' + formattaDataBreve(r.dal) + ' al ' + formattaDataBreve(r.al)) +
+        ' · ' + parti.join(' + ') + ' = <b>' + r.lezioni.length + '</b> ' + (r.lezioni.length === 1 ? 'lezione' : 'lezioni') +
+        (r.mancanti > 0 ? ' — mancano ' + r.mancanti + ' lezioni prima della fine del periodo' : '')
+      : 'Nessuna lezione disponibile da quel giorno in poi.';
+    cont.appendChild(info);
+  });
 }
 
 function renderFestivita(piano){
@@ -1938,6 +2111,8 @@ function renderMiniCalendario(piano, calcolo){
   piano.eccezioni.forEach(e=>{ if(e.tipo==='saltata') saltateMap[e.data]=true; if(e.tipo==='extra') extraMap[e.data]=true; });
   const verificheMap = {};
   (calcolo.verifiche||[]).forEach(pv => { if(pv.attiva) pv.date.forEach(iso => { verificheMap[iso] = pv; }); });
+  const civicaMap = {};
+  (calcolo.civica||[]).forEach(l => civicaMap[l.iso] = l.progetto);
 
   let cursore = new Date(parseISO(piano.dataInizio).getFullYear(), parseISO(piano.dataInizio).getMonth(), 1);
   const fine = parseISO(piano.dataFine);
@@ -1965,18 +2140,19 @@ function renderMiniCalendario(piano, calcolo){
       const verificaQui = verificheMap[iso];
       let cls = 'giorno-cella';
       if(verificaQui) cls += ' verifica';
+      else if(civicaMap[iso]) cls += ' civica';
       else if(saltateMap[iso]) cls += ' saltata';
       else if(extraMap[iso]) cls += ' extra';
       else if(lezioniSet.has(iso)) cls += ' lezione';
       cella.className = cls;
       cella.textContent = g;
-      cella.title = verificaQui ? verificaQui.etichetta : iso;
+      cella.title = verificaQui ? verificaQui.etichetta : (civicaMap[iso] ? 'Educazione civica' + (civicaMap[iso].titolo ? ': ' + civicaMap[iso].titolo : '') : iso);
       if(verificaQui){
         // la data della verifica deriva dal modulo: si sposta da sola se il modulo slitta.
         // Per segnare il giorno come saltato (es. sciopero proprio quel giorno), clic: diventa saltata e la verifica scorre avanti.
         cella.addEventListener('click', ()=> toggleGiornoCalendario(piano, iso, true, false, false));
       } else if(iso >= piano.dataInizio && iso <= piano.dataFine){
-        cella.addEventListener('click', ()=> toggleGiornoCalendario(piano, iso, lezioniSet.has(iso) || saltateMap[iso] || extraMap[iso], saltateMap[iso], extraMap[iso]));
+        cella.addEventListener('click', ()=> toggleGiornoCalendario(piano, iso, lezioniSet.has(iso) || !!civicaMap[iso] || saltateMap[iso] || extraMap[iso], saltateMap[iso], extraMap[iso]));
       } else {
         cella.style.opacity = '0.3';
       }
@@ -2156,6 +2332,21 @@ function renderGantt(piano, calcolo){
     corpoGantt.appendChild(linea);
   }
 
+  // bande dell'educazione civica (una per progetto, dalla prima all'ultima lezione in questo piano)
+  gruppiCivica(calcolo).forEach(g => {
+    const dDa = parseISO(g.dal), dA = parseISO(g.al);
+    const banda = document.createElement('div');
+    banda.className = 'civica-banda';
+    banda.style.left = Math.max(0, (dDa - inizio)/86400000 / totaleGiorni * 100) + '%';
+    banda.style.width = Math.max(0.6, ((dA - dDa)/86400000 + 1) / totaleGiorni * 100) + '%';
+    banda.title = 'Educazione civica' + (g.titolo ? ': ' + g.titolo : '') + ' — ' + g.n + ' ' + (g.n===1?'lezione':'lezioni') + ' in questa materia';
+    const et = document.createElement('div');
+    et.className = 'civica-etichetta';
+    et.textContent = '★ Ed. civica';
+    banda.appendChild(et);
+    corpoGantt.appendChild(banda);
+  });
+
   // marcatori delle verifiche (date calcolate: seguono i moduli)
   (calcolo.verifiche||[]).forEach(pv=>{
     if(!pv.attiva || !pv.date.length) return;
@@ -2245,6 +2436,8 @@ function importaBackup(file){
       );
       if(!conferma) return;
       stato = statoImportato;
+      if(!Array.isArray(stato.civica)) stato.civica = [];
+      if(!stato.festeConfig) stato.festeConfig = { anno: 2026, nome:'San Saturnino', giorno:30, mese:10 };
       if(!stato.pianoAttivo && stato.piani.length) stato.pianoAttivo = stato.piani[0].id;
       salvaDati();
       ultimoBackup = Date.now(); // subito dopo il ripristino, il file su disco coincide con i dati
