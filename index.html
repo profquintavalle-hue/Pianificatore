@@ -574,7 +574,7 @@
 <div class="app">
   <div class="sidebar" id="sidebar">
     <h1>Pianificatore</h1>
-    <div class="sottotitolo">Moduli didattici &middot; a cascata &middot; v. 2.7</div>
+    <div class="sottotitolo">Moduli didattici &middot; a cascata &middot; v. 2.8</div>
     <div id="lista-tab"></div>
     <button class="btn-nuovo-piano" id="btn-nuovo-piano">+ nuovo piano (classe/materia)</button>
     <div id="sezione-cestino"></div>
@@ -1372,6 +1372,10 @@ function renderMain(){
     <details class="pannello" id="pannello-eccezioni">
       <summary>Lezioni saltate / lezioni extra</summary>
       <div class="sotto-intestazione" style="margin-bottom:12px;">Clicca un giorno di lezione nel calendario per segnarlo come saltato (assemblea, sciopero, gita...). Clicca un giorno che normalmente non è di lezione per aggiungerlo come lezione extra (recupero).</div>
+      ${piano.anno && piano.sezione ? `<label style="display:flex; align-items:center; gap:8px; font-size:0.83rem; margin-bottom:12px; cursor:pointer;">
+        <input type="checkbox" id="chk-salta-classe" ${stato.saltaInClasse !== false ? 'checked' : ''}>
+        Quando segno (o tolgo) un giorno saltato, fallo in tutti i piani della classe <b>${piano.anno}${piano.sezione}</b> che hanno lezione quel giorno
+      </label>` : ''}
       <div class="mini-calendario" id="mini-calendario"></div>
       <div class="legenda-cal">
         <span><i style="background:rgba(31,92,86,0.12)"></i>lezione regolare</span>
@@ -1452,6 +1456,9 @@ function renderMain(){
     piano.festivita.push({ da: piano.dataInizio, a: piano.dataInizio, etichetta:'Vacanza' });
     salvaDati(); render();
   });
+
+  const chkSalta = document.getElementById('chk-salta-classe');
+  if(chkSalta) chkSalta.addEventListener('change', e=>{ stato.saltaInClasse = e.target.checked; salvaDati(); });
 
   renderCivica(piano);
   const btnCiv = document.getElementById('btn-aggiungi-civica');
@@ -2379,17 +2386,34 @@ function toggleGiornoCalendario(piano, iso, eraLezioneOEccezione, eraSaltata, er
   const gg = giornoSettimanaLunBase(parseISO(iso));
   const regolare = piano.giorni.includes(gg) && !inFestivita(iso, piano.festivita);
 
+  // giorni saltati: se richiesto, anche negli altri piani della stessa classe che hanno lezione quel giorno
+  const inClasse = stato.saltaInClasse !== false && piano.anno && piano.sezione;
+  const altri = inClasse ? stato.piani.filter(p => p.id !== piano.id && stessaClasse(p, piano)) : [];
+  const haLezione = p => p.giorni.includes(gg) && !inFestivita(iso, p.festivita);
+  let nota = '';
+
   if(eraSaltata){
     piano.eccezioni = piano.eccezioni.filter(e => !(e.data===iso && e.tipo==='saltata'));
+    const toccati = altri.filter(p => p.eccezioni.some(e => e.data===iso && e.tipo==='saltata'));
+    toccati.forEach(p => p.eccezioni = p.eccezioni.filter(e => !(e.data===iso && e.tipo==='saltata')));
+    if(toccati.length) nota = formattaDataBreve(iso) + ': tolto il giorno saltato anche in ' + toccati.map(p => p.nome).join(', ') + '.';
   } else if(eraExtra){
     piano.eccezioni = piano.eccezioni.filter(e => !(e.data===iso && e.tipo==='extra'));
   } else if(regolare){
     piano.eccezioni.push({ data: iso, tipo:'saltata', etichetta:'' });
+    if(inClasse){
+      const conLezione = altri.filter(haLezione);
+      conLezione.forEach(p => { if(!p.eccezioni.some(e => e.data===iso && e.tipo==='saltata')) p.eccezioni.push({ data: iso, tipo:'saltata', etichetta:'' }); });
+      const senza = altri.filter(p => !haLezione(p));
+      nota = formattaDataBreve(iso) + ': giorno saltato in ' + [piano, ...conLezione].map(p => p.nome).join(', ') +
+        (senza.length ? ' (' + senza.map(p => p.nome).join(', ') + ': nessuna lezione quel giorno)' : '') + '.';
+    }
   } else {
     piano.eccezioni.push({ data: iso, tipo:'extra', etichetta:'' });
   }
   salvaDati();
   render();
+  if(nota) mostraNotaBackup(nota, 'ok');
 }
 
 function renderGanttOnly(){
