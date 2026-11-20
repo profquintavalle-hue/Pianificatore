@@ -587,7 +587,7 @@
 <div class="app">
   <div class="sidebar" id="sidebar">
     <h1>Pianificatore</h1>
-    <div class="sottotitolo">Moduli didattici &middot; a cascata &middot; v. 2.9</div>
+    <div class="sottotitolo">Moduli didattici &middot; a cascata &middot; v. 2.10</div>
     <div id="lista-tab"></div>
     <button class="btn-nuovo-piano" id="btn-nuovo-piano">+ nuovo piano (classe/materia)</button>
     <div id="sezione-cestino"></div>
@@ -752,7 +752,58 @@ function copiaVacanzeManuali(origine){
 }
 
 function inFestivita(iso, festivita){
-  return festivita.some(f => iso >= f.da && iso <= f.a);
+  return (festivita || []).some(f => iso >= f.da && iso <= f.a);
+}
+
+// Aggiunge al registro dei giorni senza lezione le festività [{etichetta, da, a}] non ancora coperte.
+// Una festività è "coperta" se ogni suo giorno feriale è già nel registro per tutte le classi.
+// classi: [] = tutte; altrimenti le classi a cui si applica.
+function aggiungiFestivitaAlRegistro(feste, classi){
+  let n = 0;
+  feste.forEach(f => {
+    if(!f.da) return;
+    const fine = f.a || f.da;
+    let d = parseISO(f.da), scoperto = false;
+    while(d <= parseISO(fine)){
+      const iso = toISO(d);
+      if(giornoSettimanaLunBase(d) < 6){
+        const coperto = (stato.giorniSenzaLezione || []).some(g => iso >= g.dal && iso <= (g.al || g.dal) &&
+          (!g.classi || !g.classi.length || (classi && classi.length && classi.every(c => g.classi.includes(c)))));
+        if(!coperto){ scoperto = true; break; }
+      }
+      d.setDate(d.getDate()+1);
+    }
+    if(!scoperto) return;
+    stato.giorniSenzaLezione.push({ id: idCasuale(), dal: f.da, al: fine !== f.da ? fine : '', tipo: 'Chiusura / festività',
+      chi: 'Niente lezioni a scuola', descrizione: f.etichetta || 'Festività', ore: null, classi: classi || [], protocollo: '', note: '', link: '' });
+    n++;
+  });
+  return n;
+}
+
+// v. 2.10: le festività dei singoli piani passano nel registro unico (una volta sola).
+// Le vecchie liste restano in stato.festivitaArchivio per sicurezza.
+function migraFestivitaNelRegistro(){
+  if(!Array.isArray(stato.giorniSenzaLezione)) stato.giorniSenzaLezione = [];
+  const conFeste = stato.piani.filter(p => (p.festivita || []).length);
+  if(!conFeste.length) return 0;
+  const tutteLeClassi = classiDisponibili();
+  // raggruppa per periodo: quali classi lo avevano
+  const periodi = {};
+  conFeste.forEach(p => p.festivita.forEach(f => {
+    const k = f.da + '|' + f.a;
+    if(!periodi[k]) periodi[k] = { etichetta: f.etichetta, da: f.da, a: f.a, classi: new Set() };
+    periodi[k].classi.add(classeDi(p) || p.nome);
+  }));
+  let n = 0;
+  Object.values(periodi).sort((x, y) => x.da < y.da ? -1 : 1).forEach(per => {
+    const cl = [...per.classi];
+    const perTutte = tutteLeClassi.every(c => cl.includes(c));
+    n += aggiungiFestivitaAlRegistro([per], perTutte ? [] : cl.filter(c => tutteLeClassi.includes(c)));
+  });
+  stato.festivitaArchivio = (stato.festivitaArchivio || []).concat(conFeste.map(p => ({ piano: p.nome, festivita: p.festivita })));
+  stato.piani.forEach(p => p.festivita = []);
+  return n;
 }
 
 // Restituisce l'elenco ordinato di date-lezione (ISO) per un piano,
@@ -1327,7 +1378,8 @@ function renderMain(){
         </div>
       </div>
       <div class="campo" style="margin-top:6px;">
-        <label>Periodi di vacanza / sospensione didattica</label>
+        <label>Festività e vacanze</label>
+        <div class="nota-precompila" style="margin-bottom:8px;">Festività, vacanze e ponti ora si segnano solo nel riquadro <b>«Giorni senza lezione»</b>, insieme a tutto il resto: valgono per tutte le classi. Qui puoi inserirle in un colpo solo per un nuovo anno scolastico.</div>
         <div class="riga-precompila">
           <span>Anno scolastico</span>
           <input type="number" id="feste-anno" value="${stato.festeConfig.anno}" min="2000" max="2100">
@@ -1336,16 +1388,9 @@ function renderMain(){
           <input type="text" id="feste-patrono" value="${escapeHtml(stato.festeConfig.nome)}">
           <input type="number" id="feste-giorno" value="${stato.festeConfig.giorno}" min="1" max="31" title="giorno">
           <input type="number" id="feste-mese" value="${stato.festeConfig.mese}" min="1" max="12" title="mese">
-          <button class="btn-precompila" id="btn-precompila-festivita">Precompila festività</button>
-          <label class="chk"><input type="checkbox" id="feste-tutti"> tutte le classi</label>
+          <button class="btn-precompila" id="btn-precompila-festivita">Inserisci le festività nel registro</button>
         </div>
-        <div class="nota-precompila">Calcola da sé Pasqua, martedì grasso, feste nazionali, Sa die e patrono. I periodi che aggiungi a mano (ponti del collegio) non vengono toccati.</div>
-        <div id="lista-festivita" class="lista-eccezioni"></div>
-        <button class="btn-aggiungi" id="btn-aggiungi-festivita">+ aggiungi periodo di vacanza</button>
-        <div class="riga-precompila" style="margin-top:8px;">
-          <button class="btn-precompila" id="btn-copia-vacanze-manuali">Copia in tutte le altre classi le vacanze aggiunte a mano</button>
-          <span class="nota-precompila" style="margin:0;">ponti e vacanze deliberate; quelle già presenti non vengono duplicate</span>
-        </div>
+        <div class="nota-precompila">Calcola da sé Pasqua, martedì grasso, feste nazionali, Sa die e patrono. Le festività già presenti nel registro non vengono duplicate; i ponti deliberati dal collegio li aggiungi a mano nel registro.</div>
       </div>
     </details>
 
@@ -1486,7 +1531,6 @@ function renderMain(){
     contGiorni.appendChild(chip);
   });
 
-  renderFestivita(piano);
   document.getElementById('btn-precompila-festivita').addEventListener('click', ()=>{
     const anno = parseInt(document.getElementById('feste-anno').value);
     if(isNaN(anno)){ alert('Indica l\'anno di partenza (per il 2026/27 scrivi 2026).'); return; }
@@ -1496,26 +1540,9 @@ function renderMain(){
       mese: document.getElementById('feste-mese').value
     };
     stato.festeConfig = { anno: anno, nome: patrono.nome, giorno: patrono.giorno, mese: patrono.mese };
-    const tutti = document.getElementById('feste-tutti').checked;
-    const bersagli = tutti ? stato.piani : [piano];
-    bersagli.forEach(p => precompilaFestivitaPiano(p, anno, patrono));
-    if(tutti) copiaVacanzeManuali(piano);
+    const n = aggiungiFestivitaAlRegistro(generaFestivita(anno, patrono));
     salvaDati(); render();
-    mostraNotaBackup(tutti
-      ? 'Festività ' + anno + '/' + (anno+1) + ' inserite in tutte le classi.'
-      : 'Festività ' + anno + '/' + (anno+1) + ' inserite in questa classe.', 'ok');
-  });
-  document.getElementById('btn-copia-vacanze-manuali').addEventListener('click', ()=>{
-    const manuali = piano.festivita.filter(f => !f.auto);
-    if(!manuali.length){ alert('In questa classe non ci sono vacanze aggiunte a mano da copiare.'); return; }
-    if(stato.piani.length < 2){ alert('C\'è una sola classe.'); return; }
-    const n = copiaVacanzeManuali(piano);
-    salvaDati(); render();
-    mostraNotaBackup(n ? 'Vacanze aggiunte a mano copiate nelle altre classi (' + n + ' inserimenti).' : 'Le altre classi avevano già queste vacanze.', 'ok');
-  });
-  document.getElementById('btn-aggiungi-festivita').addEventListener('click', ()=>{
-    piano.festivita.push({ da: piano.dataInizio, a: piano.dataInizio, etichetta:'Vacanza' });
-    salvaDati(); render();
+    mostraNotaBackup(n ? 'Festività ' + anno + '/' + (anno+1) + ': ' + n + ' voci aggiunte al registro «Giorni senza lezione».' : 'Le festività ' + anno + '/' + (anno+1) + ' erano già tutte nel registro.', 'ok');
   });
 
   renderRegistroGsl();
@@ -2865,6 +2892,7 @@ function importaBackup(file){
       if(!Array.isArray(stato.civica)) stato.civica = [];
       if(!Array.isArray(stato.cestino)) stato.cestino = [];
       if(!Array.isArray(stato.giorniSenzaLezione)) stato.giorniSenzaLezione = [];
+      migraFestivitaNelRegistro();
       if(!stato.festeConfig) stato.festeConfig = { anno: 2026, nome:'San Saturnino', giorno:30, mese:10 };
       if(!stato.pianoAttivo && stato.piani.length) stato.pianoAttivo = stato.piani[0].id;
       salvaDati();
@@ -2898,6 +2926,9 @@ window.addEventListener('beforeunload', e=>{
     return '';
   }
 });
+
+// v. 2.10: festività dei piani -> registro unico (solo la prima volta)
+if(stato.piani.some(p => (p.festivita || []).length)){ migraFestivitaNelRegistro(); salvaDati(); }
 
 if(stato.piani.length === 0){
   render();
