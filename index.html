@@ -517,6 +517,18 @@
   .griglia-gsl .num{ font-size:0.72rem; color:var(--inchiostro-tenue); }
   .griglia-gsl .etic{ display:block; font-size:0.66rem; line-height:1.2; padding:2px 4px; border-radius:4px; margin-top:2px; color:#3b2a1a; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .dettaglio-gsl{ margin-top:10px; padding:10px 12px; background:#fff; border:1px solid var(--bordo); border-radius:8px; font-size:0.82rem; }
+  .tab-verifiche{ width:100%; border-collapse:collapse; font-size:0.82rem; background:#fff; }
+  .tab-verifiche th{ text-align:left; font-size:0.68rem; text-transform:uppercase; letter-spacing:.04em; color:var(--inchiostro-tenue); padding:6px 8px; border-bottom:2px solid var(--bordo); background:#fdf6ea; }
+  .tab-verifiche td{ padding:7px 8px; border-bottom:1px solid var(--bordo); vertical-align:top; }
+  .tab-verifiche tr.prossima td{ background:rgba(212,160,23,0.14); }
+  .tab-verifiche tr.prossima td:first-child{ box-shadow:inset 3px 0 0 var(--ambra); }
+  .tab-verifiche tr.svolta td{ opacity:0.55; }
+  .tab-verifiche tr.spenta td{ opacity:0.45; font-style:italic; }
+  .tab-verifiche .quando{ white-space:nowrap; font-weight:600; }
+  .tab-verifiche .giorni{ font-size:0.72rem; color:var(--inchiostro-tenue); font-weight:400; }
+  .segno-data{ font-size:0.68rem; padding:1px 6px; border-radius:8px; margin-left:4px; font-weight:600; }
+  .segno-data.fissa{ background:rgba(31,92,86,0.12); color:var(--teal); }
+  .segno-data.auto{ background:rgba(212,160,23,0.18); color:#8a6510; }
   .dettagli-civica{ margin:-6px 0 14px 2px; font-size:0.82rem; }
   .dettagli-civica summary{ cursor:pointer; color:#A84A6E; font-weight:600; margin-bottom:6px; }
   .dettagli-civica label{ display:block; font-size:0.75rem; color:var(--inchiostro-tenue); margin:8px 0 3px; }
@@ -603,7 +615,7 @@
 <div class="app">
   <div class="sidebar" id="sidebar">
     <h1>Pianificatore</h1>
-    <div class="sottotitolo">Moduli didattici &middot; a cascata &middot; v. 2.12</div>
+    <div class="sottotitolo">Moduli didattici &middot; a cascata &middot; v. 2.13</div>
     <div id="lista-tab"></div>
     <button class="btn-nuovo-piano" id="btn-nuovo-piano">+ nuovo piano (classe/materia)</button>
     <div id="sezione-cestino"></div>
@@ -1321,7 +1333,7 @@ function escapeHtml(s){
 }
 
 function catturaStatoPannelli(){
-  const ids = ['pannello-impostazioni','pannello-civica','pannello-moduli','pannello-gsl','pannello-eccezioni'];
+  const ids = ['pannello-impostazioni','pannello-civica','pannello-verifiche','pannello-moduli','pannello-gsl','pannello-eccezioni'];
   const stato = {};
   ids.forEach(id=>{
     const el = document.getElementById(id);
@@ -1455,6 +1467,11 @@ function renderMain(){
       ${piano.anno && piano.sezione ? '<button class="btn-aggiungi" id="btn-aggiungi-civica">+ aggiungi progetto di educazione civica</button>' : ''}
     </details>
 
+    <details class="pannello" id="pannello-verifiche">
+      <summary>Verifiche a colpo d'occhio</summary>
+      <div id="riepilogo-verifiche"></div>
+    </details>
+
     <details class="pannello" open id="pannello-moduli">
       <summary>Moduli</summary>
       <div id="barra-sposta-moduli"></div>
@@ -1572,6 +1589,7 @@ function renderMain(){
   if(chkSalta) chkSalta.addEventListener('change', e=>{ stato.saltaInClasse = e.target.checked; salvaDati(); });
 
   renderCivica(piano);
+  renderRiepilogoVerifiche(piano);
   const btnCiv = document.getElementById('btn-aggiungi-civica');
   if(btnCiv) btnCiv.addEventListener('click', ()=>{
     stato.civica.push({ id: idCasuale(), anno: String(piano.anno), sezione: piano.sezione, titolo: '', inizio: piano.dataInizio, lezioni: 7 });
@@ -2339,6 +2357,50 @@ function finestraElencoGsl(){
   w.document.close();
 }
 
+// ---------- Riquadro "Verifiche a colpo d'occhio" ----------
+function renderRiepilogoVerifiche(piano, calcolo){
+  const cont = document.getElementById('riepilogo-verifiche');
+  if(!cont) return;
+  calcolo = calcolo || calcolaPianificazione(piano);
+  const oggi = oggiISO();
+  const gs = iso => { const d = parseISO(iso); return GIORNI_LABEL[giornoSettimanaLunBase(d)] + ' ' + String(d.getDate()).padStart(2,'0') + '/' + String(d.getMonth()+1).padStart(2,'0'); };
+  const voci = (calcolo.verifiche || []).map(pv => {
+    const date = pv.date || [];
+    const prima = date[0] || null, ultima = date[date.length-1] || null;
+    const svolta = ultima && ultima < oggi;
+    return { pv, prima, ultima, svolta };
+  });
+  const future = voci.filter(x => !x.svolta).sort((a, b) => (a.prima || '9999') < (b.prima || '9999') ? -1 : 1);
+  const passate = voci.filter(x => x.svolta).sort((a, b) => a.prima < b.prima ? 1 : -1);
+  const prossima = future.find(x => x.pv.attiva && x.prima);
+  if(!voci.length){ cont.innerHTML = '<div class="sotto-gsl" style="padding:6px 2px;">Nessuna verifica nel piano.</div>'; return; }
+  const riga = x => {
+    const v = x.pv.verifica;
+    let quando = '—';
+    if(x.prima){
+      quando = x.prima === x.ultima ? gs(x.prima) : gs(x.prima) + ' – ' + gs(x.ultima);
+      if(x.pv.date.length > 2) quando += `<div class="giorni">${x.pv.date.map(gs).join(', ')}</div>`;
+    } else if(x.pv.motivoProblema){
+      quando = '<span style="color:var(--ruggine)">non collocabile</span>';
+    }
+    const segno = x.prima ? (x.pv.dataAutomatica ? '<span class="segno-data auto" title="Data calcolata dal Pianificatore: si sposta se i moduli slittano">auto</span>' : '<span class="segno-data fissa" title="Data fissata da te">fissata</span>') : '';
+    let statoTxt;
+    if(!x.pv.attiva) statoTxt = 'non prevista';
+    else if(x.svolta) statoTxt = '✓ svolta';
+    else if(x.prima && x.prima <= oggi) statoTxt = '<b>in corso</b>';
+    else if(x.prima){ const gg = Math.round((parseISO(x.prima) - parseISO(oggi)) / 86400000); statoTxt = gg === 1 ? '<b>domani</b>' : 'tra ' + gg + ' giorni'; }
+    else statoTxt = '—';
+    const cls = !x.pv.attiva ? 'spenta' : x.svolta ? 'svolta' : (x === prossima ? 'prossima' : '');
+    return `<tr class="${cls}"><td class="quando">${quando}${segno}</td>
+      <td>${v.tipo === 'orale' ? 'Orale' : 'Scritta'}<div class="giorni">${v.qualifica === 'recupero' ? 'recupero' : 'sommativa'}</div></td>
+      <td>${moduliDellaVerifica(v, x.pv.modulo, piano).map(escapeHtml).join('<br>')}</td>
+      <td style="text-align:center;">${x.pv.date.length || v.durataLezioni || 1}</td>
+      <td style="white-space:nowrap;">${statoTxt}</td></tr>`;
+  };
+  cont.innerHTML = `<table class="tab-verifiche"><thead><tr><th>Quando</th><th>Tipo</th><th>Argomenti (moduli)</th><th>Lezioni</th><th>Stato</th></tr></thead>
+    <tbody>${future.map(riga).join('')}${passate.map(riga).join('')}</tbody></table>`;
+}
+
 function renderCivica(piano){
   const cont = document.getElementById('lista-civica');
   if(!cont) return;
@@ -2733,6 +2795,7 @@ function renderGanttOnly(){
   const piano = pianoCorrente();
   if(!piano) return;
   const calcolo = calcolaPianificazione(piano);
+  renderRiepilogoVerifiche(piano, calcolo);
   renderMiniCalendario(piano, calcolo);
   renderPannelloDiagramma(piano, calcolo);
 }
