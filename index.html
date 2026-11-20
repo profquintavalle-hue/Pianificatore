@@ -626,7 +626,7 @@
 <div class="app">
   <div class="sidebar" id="sidebar">
     <h1>Pianificatore</h1>
-    <div class="sottotitolo">Moduli didattici &middot; a cascata &middot; v. 2.17</div>
+    <div class="sottotitolo">Moduli didattici &middot; a cascata &middot; v. 2.18</div>
     <div class="sezione-backup in-alto">
       <div class="titolo-backup">Backup</div>
       <button class="btn-backup" id="btn-esporta-backup">⤓ Salva backup su file</button>
@@ -2271,6 +2271,19 @@ function renderRegistroGsl(){
     else if(e.target.value !== 'Altro') document.getElementById('gsl-chi').value = 'Niente lezioni a scuola';
   });
 
+  const inMod = gslInModifica ? (stato.giorniSenzaLezione || []).find(g => g.id === gslInModifica) : null;
+  if(inMod){
+    const set = (id, v) => { document.getElementById(id).value = v || ''; };
+    set('gsl-dal', inMod.dal); set('gsl-al', inMod.al); set('gsl-tipo', inMod.tipo); set('gsl-chi', inMod.chi);
+    set('gsl-ore', inMod.ore); set('gsl-descr', inMod.descrizione); set('gsl-prot', inMod.protocollo); set('gsl-note', inMod.note); set('gsl-link', inMod.link);
+    document.querySelectorAll('.gsl-classe').forEach(c => c.checked = !inMod.classi || !inMod.classi.length || inMod.classi.includes(c.value));
+    document.getElementById('btn-gsl-aggiungi').textContent = '✓ salva le modifiche';
+    const ann = document.createElement('button');
+    ann.className = 'btn-precompila'; ann.textContent = 'annulla modifica';
+    ann.addEventListener('click', ()=>{ gslInModifica = null; render(); });
+    document.getElementById('btn-gsl-aggiungi').after(ann);
+    document.getElementById('form-gsl').style.background = 'rgba(212,160,23,0.10)';
+  }
   const lista = document.getElementById('lista-gsl');
   const oggi = oggiISO();
   const voci = (stato.giorniSenzaLezione || []).slice().sort((a, b) => a.dal < b.dal ? -1 : a.dal > b.dal ? 1 : 0);
@@ -2284,8 +2297,10 @@ function renderRegistroGsl(){
           ${Object.keys(perse).length ? ' · lezioni tolte: ' + Object.entries(perse).map(([c, n]) => c + ' ' + n).join(', ') : ' · nessuna lezione quel giorno'}
           ${g.protocollo ? ' · ' + escapeHtml(g.protocollo) : ''}${g.note ? ' · ' + escapeHtml(g.note) : ''}
           ${g.link ? ` · <a href="${escapeHtml(g.link)}" target="_blank" rel="noopener">documento</a>` : ''}</div></div>
+      <button class="btn-piccolo" data-gsl-mod="${g.id}" title="Modifica">modifica</button>
       <button class="azione-icona elimina" data-gsl-del="${g.id}" title="Rimuovi">✕</button></div>`;
   }).join('') : '<div class="sotto-gsl" style="padding:10px 2px;">Nessun giorno registrato.</div>';
+  lista.querySelectorAll('[data-gsl-mod]').forEach(b => b.addEventListener('click', ()=> avviaModificaGsl(b.dataset.gslMod)));
   lista.querySelectorAll('[data-gsl-del]').forEach(b => b.addEventListener('click', ()=>{
     const g = stato.giorniSenzaLezione.find(x => x.id === b.dataset.gslDel);
     if(!g || !confirm('Rimuovere dal registro: ' + testoDateGsl(g) + ' – ' + g.tipo + '?\n\nLe lezioni di quel giorno torneranno nei piani.')) return;
@@ -2310,13 +2325,15 @@ function renderRegistroGsl(){
     if(al === dal) al = '';
     const scelte = [...document.querySelectorAll('.gsl-classe')].filter(c => c.checked).map(c => c.value);
     if(!scelte.length){ alert('Scegli almeno una classe.'); return; }
-    const g = { id: idCasuale(), dal, al, tipo: v('gsl-tipo'), chi: v('gsl-chi'), descrizione: v('gsl-descr') || v('gsl-tipo'),
+    const campi = { dal, al, tipo: v('gsl-tipo'), chi: v('gsl-chi'), descrizione: v('gsl-descr') || v('gsl-tipo'),
       ore: Number(v('gsl-ore')) || null, classi: scelte.length === classi.length ? [] : scelte,
       protocollo: v('gsl-prot'), note: v('gsl-note'), link: v('gsl-link') };
-    stato.giorniSenzaLezione.push(g);
+    let g;
+    if(inMod){ g = Object.assign(inMod, campi); gslInModifica = null; }
+    else { g = Object.assign({ id: idCasuale() }, campi); stato.giorniSenzaLezione.push(g); }
     salvaDati(); render();
     const perse = lezioniPerseGsl(g);
-    mostraNotaBackup(testoDateGsl(g) + ' registrato' + (Object.keys(perse).length ? ': lezioni tolte ' + Object.entries(perse).map(([c, n]) => c + ' ' + n).join(', ') : '') + '.', 'ok');
+    mostraNotaBackup(testoDateGsl(g) + (campi && inMod ? ' modificato' : ' registrato') + (Object.keys(perse).length ? ': lezioni tolte ' + Object.entries(perse).map(([c, n]) => c + ' ' + n).join(', ') : '') + '.', 'ok');
   });
   document.getElementById('btn-gsl-elenco').addEventListener('click', finestraElencoGsl);
   const inp = document.getElementById('input-gsl');
@@ -2348,7 +2365,13 @@ function renderRegistroGsl(){
 // ---------- Vista calendario del registro ----------
 const COLORI_GSL = { 'Malattia':'#f4c7c0', 'Permesso giornaliero':'#f8d7b0', 'Permesso orario':'#f6e6a6', 'Sciopero':'#dccbe8',
   'Assemblea sindacale':'#f3cde0', "Assemblea d'istituto":'#f6e6a6', 'Chiusura / festività':'#cfe5c8', 'Uscita didattica':'#c9dcef', 'Altro':'#e3d6c3' };
-let meseGsl = null, dettaglioGslId = null;
+let meseGsl = null, dettaglioGslId = null, gslInModifica = null;
+function avviaModificaGsl(id){
+  gslInModifica = id; dettaglioGslId = null;
+  render();
+  const f = document.getElementById('form-gsl');
+  if(f) f.scrollIntoView({ behavior:'smooth', block:'center' });
+}
 function renderCalendarioGsl(){
   const cont = document.getElementById('cal-gsl');
   if(!cont) return;
@@ -2379,7 +2402,7 @@ function renderCalendarioGsl(){
       ${Object.keys(perse).length ? 'lezioni tolte: ' + Object.entries(perse).map(([c, n]) => c + ' ' + n).join(', ') : 'nessuna lezione quel giorno'}
       ${det.protocollo ? '<br>' + escapeHtml(det.protocollo) : ''}${det.note ? '<br>' + escapeHtml(det.note) : ''}
       ${det.link ? `<br><a href="${escapeHtml(det.link)}" target="_blank" rel="noopener">apri il documento</a>` : ''}
-      <div style="margin-top:6px;"><button class="btn-piccolo rosso" data-gsl-del="${det.id}">Rimuovi dal registro</button> <button class="btn-piccolo" id="chiudi-det-gsl">Chiudi</button></div></div>`;
+      <div style="margin-top:6px;"><button class="btn-piccolo" id="mod-det-gsl">Modifica</button> <button class="btn-piccolo rosso" data-gsl-del="${det.id}">Rimuovi dal registro</button> <button class="btn-piccolo" id="chiudi-det-gsl">Chiudi</button></div></div>`;
   }
   cont.innerHTML = `<div class="testa">
       <button id="gsl-prec">◀</button><span class="titolo">${MESI_LABEL[mese]} ${anno}</span><button id="gsl-succ">▶</button>
@@ -2396,6 +2419,8 @@ function renderCalendarioGsl(){
     const campo = document.getElementById('gsl-dal');
     if(campo){ campo.value = c.dataset.iso; document.getElementById('gsl-al').value = ''; campo.focus(); campo.scrollIntoView({ behavior:'smooth', block:'center' }); }
   }));
+  const modD = cont.querySelector('#mod-det-gsl');
+  if(modD) modD.addEventListener('click', ()=> avviaModificaGsl(det.id));
   const chiudi = cont.querySelector('#chiudi-det-gsl');
   if(chiudi) chiudi.addEventListener('click', ()=>{ dettaglioGslId = null; renderCalendarioGsl(); });
   const del = cont.querySelector('[data-gsl-del]');
