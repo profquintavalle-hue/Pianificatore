@@ -626,7 +626,7 @@
 <div class="app">
   <div class="sidebar" id="sidebar">
     <h1>Pianificatore</h1>
-    <div class="sottotitolo">Moduli didattici &middot; a cascata &middot; v. 2.16</div>
+    <div class="sottotitolo">Moduli didattici &middot; a cascata &middot; v. 2.17</div>
     <div class="sezione-backup in-alto">
       <div class="titolo-backup">Backup</div>
       <button class="btn-backup" id="btn-esporta-backup">⤓ Salva backup su file</button>
@@ -2468,15 +2468,15 @@ function dataEstesa(iso){
   const d = parseISO(iso);
   return d.getDate() + ' ' + MESI_LABEL[d.getMonth()] + ' ' + d.getFullYear();
 }
-function rtfRelazione(piano, dati, conDate){
+function rtfRelazione(piano, dati, conDate, conApprof){
   const anno = piano.dataInizio ? parseISO(piano.dataInizio).getFullYear() : '';
   let rtf = '{\\rtf1\\ansi\\ansicpg1252\\deff0\\deflang1040{\\fonttbl{\\f0\\fswiss\\fcharset0 Calibri;}}\n\\f0\\fs22\n';
   rtf += '{\\pard\\b\\fs32 ' + rtfEscape(piano.nome) + '\\par}\n';
-  rtf += '{\\pard\\fs20\\sa240 Programma svolto: argomenti, letture, attivit\\u224? e approfondimenti' + (anno ? ' \\emdash  a.s. ' + anno + '/' + (anno + 1) : '') + '\\par}\n';
-  dati.moduli.forEach((m, i) => {
+  rtf += '{\\pard\\fs20\\sa240 Programma svolto' + (conApprof ? ': argomenti, letture, attivit\\u224? e approfondimenti' : '') + (anno ? ' \\emdash  a.s. ' + anno + '/' + (anno + 1) : '') + '\\par}\n';
+  dati.moduli.filter(m => conApprof || m.argomenti.length).forEach((m, i) => {
     rtf += '{\\pard\\b\\fs26\\sb200\\sa80 ' + (i + 1) + '. ' + rtfEscape(m.nome) + '\\par}\n';
     if(m.argomenti.length) rtf += '{\\pard\\sa80 {\\i Argomenti:} ' + rtfEscape(m.argomenti.join('; ')) + '.\\par}\n';
-    if(m.voci.length){
+    if(conApprof && m.voci.length){
       rtf += '{\\pard\\sa40 {\\i Letture, attivit\\u224? e approfondimenti:}\\par}\n';
       m.voci.forEach(v => {
         rtf += '{\\pard\\fi-280\\li280\\sa60 \\bullet\\tab ' + (conDate && v.data ? rtfEscape(dataEstesa(v.data)) + ' \\endash  ' : '') + rtfEscape(v.testo) + '\\par}\n';
@@ -2489,12 +2489,12 @@ function rtfRelazione(piano, dati, conDate){
   });
   return rtf + '}';
 }
-function testoRelazione(piano, dati, conDate){
-  let t = piano.nome.toUpperCase() + '\nProgramma svolto: argomenti, letture, attività e approfondimenti\n\n';
-  dati.moduli.forEach((m, i) => {
+function testoRelazione(piano, dati, conDate, conApprof){
+  let t = piano.nome.toUpperCase() + '\nProgramma svolto' + (conApprof ? ': argomenti, letture, attività e approfondimenti' : '') + '\n\n';
+  dati.moduli.filter(m => conApprof || m.argomenti.length).forEach((m, i) => {
     t += (i + 1) + '. ' + m.nome + '\n';
     if(m.argomenti.length) t += '   Argomenti: ' + m.argomenti.join('; ') + '.\n';
-    if(m.voci.length){
+    if(conApprof && m.voci.length){
       t += '   Letture, attività e approfondimenti:\n';
       m.voci.forEach(v => t += '   • ' + (conDate && v.data ? dataEstesa(v.data) + ' – ' : '') + v.testo + '\n');
     }
@@ -2510,8 +2510,8 @@ function finestraRelazione(piano, calcolo){
   }
   const pacchetto = {
     nome: piano.nome, dati,
-    rtf: { con: rtfRelazione(piano, dati, true), senza: rtfRelazione(piano, dati, false) },
-    txt: { con: testoRelazione(piano, dati, true), senza: testoRelazione(piano, dati, false) },
+    rtf: { con: rtfRelazione(piano, dati, true, true), senza: rtfRelazione(piano, dati, false, true), soloArg: rtfRelazione(piano, dati, false, false) },
+    txt: { con: testoRelazione(piano, dati, true, true), senza: testoRelazione(piano, dati, false, true), soloArg: testoRelazione(piano, dati, false, false) },
     file: 'Relazione_' + piano.nome.replace(/[^A-Za-z0-9]+/g, '_') + '.rtf',
     date: dati.moduli.map(m => m.voci.map(v => v.data ? dataEstesa(v.data) : ''))
   };
@@ -2528,9 +2528,10 @@ function finestraRelazione(piano, calcolo){
     button.ok{ background:#A84A6E; color:#fff; }
     @media print{ .barra{ display:none; } body{ background:#fff; margin:0; } }
   </style></head><body>
-    <h1>${escapeHtml(piano.nome)}</h1><div class="sotto">Programma svolto: argomenti, letture, attività e approfondimenti</div>
+    <h1>${escapeHtml(piano.nome)}</h1><div class="sotto" id="sottotitolo">Programma svolto: argomenti, letture, attività e approfondimenti</div>
     <div class="barra">
-      <label><input type="checkbox" id="date" checked onchange="disegna()"> con le date degli approfondimenti</label>
+      <label><input type="checkbox" id="approf" checked onchange="disegna()"> con letture, attività e approfondimenti</label>
+      <label id="lab-date"><input type="checkbox" id="date" checked onchange="disegna()"> con le loro date</label>
       <button onclick="scarica()">⤓ Scarica per Word</button>
       <button onclick="copia(this)">Copia il testo</button>
       <button onclick="window.print()">Stampa o PDF</button>
@@ -2539,24 +2540,29 @@ function finestraRelazione(piano, calcolo){
     <script>
       const P = ${js};
       function esc(t){ return String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
-      function conDate(){ return document.getElementById('date').checked; }
+      function conApprof(){ return document.getElementById('approf').checked; }
+      function conDate(){ return conApprof() && document.getElementById('date').checked; }
+      function chiave(){ return !conApprof() ? 'soloArg' : conDate() ? 'con' : 'senza'; }
       function disegna(){
-        let h = '';
+        let h = '', k = 0;
+        document.getElementById('lab-date').style.opacity = conApprof() ? 1 : 0.4;
+        document.getElementById('sottotitolo').textContent = conApprof() ? 'Programma svolto: argomenti, letture, attività e approfondimenti' : 'Programma svolto';
         P.dati.moduli.forEach((m, i) => {
-          h += '<h2>' + (i+1) + '. ' + esc(m.nome) + '</h2>';
+          if(!conApprof() && !m.argomenti.length) return;
+          h += '<h2>' + (++k) + '. ' + esc(m.nome) + '</h2>';
           if(m.argomenti.length) h += '<p class="arg"><span class="lab">Argomenti:</span> ' + esc(m.argomenti.join('; ')) + '.</p>';
-          if(m.voci.length) h += '<p class="arg"><span class="lab">Letture, attività e approfondimenti:</span></p><ul>' + m.voci.map((v, j) => '<li>' + (conDate() && P.date[i][j] ? esc(P.date[i][j]) + ' – ' : '') + esc(v.testo) + '</li>').join('') + '</ul>';
+          if(conApprof() && m.voci.length) h += '<p class="arg"><span class="lab">Letture, attività e approfondimenti:</span></p><ul>' + m.voci.map((v, j) => '<li>' + (conDate() && P.date[i][j] ? esc(P.date[i][j]) + ' – ' : '') + esc(v.testo) + '</li>').join('') + '</ul>';
         });
         P.dati.civica.forEach(g => { h += '<h2>Educazione civica' + (g.titolo ? ': «' + esc(g.titolo) + '»' : '') + '</h2><p class="arg">' + g.n + ' lezioni.</p>'; });
         document.getElementById('corpo').innerHTML = h;
       }
       function scarica(){
-        const blob = new Blob([P.rtf[conDate() ? 'con' : 'senza']], { type: 'application/rtf' });
+        const blob = new Blob([P.rtf[chiave()]], { type: 'application/rtf' });
         const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = P.file;
         document.body.appendChild(a); a.click(); document.body.removeChild(a);
       }
       function copia(btn){
-        const t = P.txt[conDate() ? 'con' : 'senza'];
+        const t = P.txt[chiave()];
         const ok = () => { btn.textContent = 'Copiato ✓'; btn.classList.add('ok'); setTimeout(() => { btn.textContent = 'Copia il testo'; btn.classList.remove('ok'); }, 1500); };
         if(navigator.clipboard) navigator.clipboard.writeText(t).then(ok, () => alert('Copia non riuscita.'));
       }
