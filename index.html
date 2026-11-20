@@ -587,7 +587,7 @@
 <div class="app">
   <div class="sidebar" id="sidebar">
     <h1>Pianificatore</h1>
-    <div class="sottotitolo">Moduli didattici &middot; a cascata &middot; v. 2.10</div>
+    <div class="sottotitolo">Moduli didattici &middot; a cascata &middot; v. 2.11</div>
     <div id="lista-tab"></div>
     <button class="btn-nuovo-piano" id="btn-nuovo-piano">+ nuovo piano (classe/materia)</button>
     <div id="sezione-cestino"></div>
@@ -1357,6 +1357,37 @@ function renderMain(){
     </div>
     <div class="sotto-intestazione">${formattaDataBreve(piano.dataInizio)} → ${formattaDataBreve(piano.dataFine)} &middot; ${calcolo.lezioniTotali} lezioni disponibili nel periodo</div>
 
+    <details class="pannello" id="pannello-gsl">
+      <summary>Giorni senza lezione (registro unico, tutte le classi)</summary>
+      <div class="sotto-intestazione" style="margin-bottom:12px;">Segna qui assenze, permessi, scioperi, assemblee, chiusure e uscite. Le lezioni di quei giorni vengono tolte da sole a tutti i piani delle classi coinvolte.</div>
+      <div class="form-gsl" id="form-gsl"></div>
+      <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        <button class="btn-aggiungi" id="btn-gsl-aggiungi">+ aggiungi al registro</button>
+        <button class="btn-aggiungi" id="btn-gsl-elenco">⤓ elenco per il controllo del registro</button>
+        <button class="btn-precompila" id="btn-gsl-importa">Carica voci da file</button>
+        <input type="file" id="input-gsl" accept=".json,application/json" style="display:none">
+      </div>
+      <div class="lista-gsl" id="lista-gsl"></div>
+    </details>
+
+    <details class="pannello" id="pannello-eccezioni">
+      <summary>Lezioni saltate / lezioni extra</summary>
+      <div class="sotto-intestazione" style="margin-bottom:12px;">Clicca un giorno di lezione nel calendario per segnarlo come saltato (assemblea, sciopero, gita...). Clicca un giorno che normalmente non è di lezione per aggiungerlo come lezione extra (recupero).</div>
+      ${piano.anno && piano.sezione ? `<label style="display:flex; align-items:center; gap:8px; font-size:0.83rem; margin-bottom:12px; cursor:pointer;">
+        <input type="checkbox" id="chk-salta-classe" ${stato.saltaInClasse !== false ? 'checked' : ''}>
+        Quando segno (o tolgo) un giorno saltato, fallo in tutti i piani della classe <b>${piano.anno}${piano.sezione}</b> che hanno lezione quel giorno
+      </label>` : ''}
+      <div class="mini-calendario" id="mini-calendario"></div>
+      <div class="legenda-cal">
+        <span><i style="background:rgba(31,92,86,0.12)"></i>lezione regolare</span>
+        <span><i style="background:var(--ruggine)"></i>saltata</span>
+        <span><i style="background:var(--oliva)"></i>extra / recupero</span>
+        <span><i style="background:var(--ambra)"></i>verifica</span>
+        <span><i style="background:#A84A6E"></i>educazione civica</span>
+        <span><i style="background:repeating-linear-gradient(45deg, rgba(179,73,42,0.55) 0 3px, rgba(179,73,42,0.25) 3px 6px)"></i>giorno senza lezione (registro)</span>
+      </div>
+    </details>
+
     <details class="pannello" id="pannello-impostazioni">
       <summary>Impostazioni del piano</summary>
       <div class="riga-campi">
@@ -1459,37 +1490,6 @@ function renderMain(){
           <label class="chk"><input type="checkbox" id="sostituisci-moduli"> sostituisci i moduli esistenti</label>
         </div>
       </details>
-    </details>
-
-    <details class="pannello" id="pannello-gsl">
-      <summary>Giorni senza lezione (registro unico, tutte le classi)</summary>
-      <div class="sotto-intestazione" style="margin-bottom:12px;">Segna qui assenze, permessi, scioperi, assemblee, chiusure e uscite. Le lezioni di quei giorni vengono tolte da sole a tutti i piani delle classi coinvolte.</div>
-      <div class="form-gsl" id="form-gsl"></div>
-      <div style="display:flex; gap:8px; flex-wrap:wrap;">
-        <button class="btn-aggiungi" id="btn-gsl-aggiungi">+ aggiungi al registro</button>
-        <button class="btn-aggiungi" id="btn-gsl-elenco">⤓ elenco per il controllo del registro</button>
-        <button class="btn-precompila" id="btn-gsl-importa">Carica voci da file</button>
-        <input type="file" id="input-gsl" accept=".json,application/json" style="display:none">
-      </div>
-      <div class="lista-gsl" id="lista-gsl"></div>
-    </details>
-
-    <details class="pannello" id="pannello-eccezioni">
-      <summary>Lezioni saltate / lezioni extra</summary>
-      <div class="sotto-intestazione" style="margin-bottom:12px;">Clicca un giorno di lezione nel calendario per segnarlo come saltato (assemblea, sciopero, gita...). Clicca un giorno che normalmente non è di lezione per aggiungerlo come lezione extra (recupero).</div>
-      ${piano.anno && piano.sezione ? `<label style="display:flex; align-items:center; gap:8px; font-size:0.83rem; margin-bottom:12px; cursor:pointer;">
-        <input type="checkbox" id="chk-salta-classe" ${stato.saltaInClasse !== false ? 'checked' : ''}>
-        Quando segno (o tolgo) un giorno saltato, fallo in tutti i piani della classe <b>${piano.anno}${piano.sezione}</b> che hanno lezione quel giorno
-      </label>` : ''}
-      <div class="mini-calendario" id="mini-calendario"></div>
-      <div class="legenda-cal">
-        <span><i style="background:rgba(31,92,86,0.12)"></i>lezione regolare</span>
-        <span><i style="background:var(--ruggine)"></i>saltata</span>
-        <span><i style="background:var(--oliva)"></i>extra / recupero</span>
-        <span><i style="background:var(--ambra)"></i>verifica</span>
-        <span><i style="background:#A84A6E"></i>educazione civica</span>
-        <span><i style="background:repeating-linear-gradient(45deg, rgba(179,73,42,0.55) 0 3px, rgba(179,73,42,0.25) 3px 6px)"></i>giorno senza lezione (registro)</span>
-      </div>
     </details>
 
     <div class="pannello gantt-wrap" id="pannello-diagramma"></div>
