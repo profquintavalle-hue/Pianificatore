@@ -578,6 +578,16 @@
   .legenda-cal{ display:flex; gap:14px; font-size:0.72rem; color:var(--inchiostro-tenue); margin-top:10px; flex-wrap:wrap; }
   .legenda-cal span{ display:inline-flex; align-items:center; gap:5px; }
   /* Argomenti dei moduli */
+  .riga-argomento .chk-svolto{ flex:0 0 auto; width:16px; height:16px; margin:0; accent-color:#A84A6E; cursor:pointer; }
+  .intest-spunte{ display:flex; gap:6px; font-size:0.62rem; text-transform:uppercase; letter-spacing:.03em; color:var(--inchiostro-tenue); margin:2px 0 2px; }
+  .intest-spunte span{ width:16px; text-align:center; }
+  .intest-spunte span.svolto{ color:#A84A6E; }
+  .blocco-approf{ margin:2px 0 6px; padding:2px 0 2px 12px; border-left:3px solid var(--bordo); }
+  .blocco-approf[open]{ border-left-color:#A84A6E; }
+  .blocco-approf > summary{ cursor:pointer; font-size:0.8rem; font-weight:600; color:#A84A6E; padding:3px 0; }
+  .riga-approf{ display:flex; gap:8px; align-items:flex-start; margin:4px 0; }
+  .riga-approf input[type=date]{ padding:4px 6px; border:1px solid var(--bordo); border-radius:6px; font-size:0.78rem; }
+  .riga-approf textarea{ flex:1; padding:5px 8px; border:1px solid var(--bordo); border-radius:6px; font-family:inherit; font-size:0.82rem; resize:vertical; min-height:34px; background:#fff; }
   .blocco-argomenti{ margin:4px 0 6px; padding:2px 0 2px 12px; border-left:3px solid var(--bordo); }
   .blocco-argomenti[open]{ border-left-color:var(--teal); }
   .blocco-argomenti > summary{ font-family:inherit; cursor:pointer; font-size:0.8rem; font-weight:600; color:var(--teal); padding:3px 0; }
@@ -616,12 +626,14 @@
 <div class="app">
   <div class="sidebar" id="sidebar">
     <h1>Pianificatore</h1>
-    <div class="sottotitolo">Moduli didattici &middot; a cascata &middot; v. 2.15</div>
+    <div class="sottotitolo">Moduli didattici &middot; a cascata &middot; v. 2.16</div>
     <div class="sezione-backup in-alto">
       <div class="titolo-backup">Backup</div>
       <button class="btn-backup" id="btn-esporta-backup">⤓ Salva backup su file</button>
       <button class="btn-backup" id="btn-importa-backup">⤒ Ripristina da file</button>
       <input type="file" id="input-file-backup" accept=".json,application/json" style="display:none">
+      <button class="btn-backup" id="btn-importa-diario" title="Porta nel Pianificatore approfondimenti e argomenti svolti dal Diario degli approfondimenti">⤒ Importa dal Diario</button>
+      <input type="file" id="input-file-diario" accept=".json,application/json" style="display:none">
       <div class="nota-backup" id="nota-backup">Consiglio: salva il file nel tuo Google Drive dopo modifiche importanti.</div>
     </div>
     <div id="lista-tab"></div>
@@ -1112,7 +1124,52 @@ function argomentiSpuntati(m){
   return (m.argomenti || []).filter(a => a.fatto && (a.testo || '').trim()).map(a => a.testo.trim().replace(/[.;]+$/, ''));
 }
 function copiaArgomenti(m, conSpunte){
-  return (m.argomenti || []).map(a => ({ id: idCasuale(), testo: a.testo, fatto: conSpunte ? !!a.fatto : false }));
+  return (m.argomenti || []).map(a => ({ id: idCasuale(), testo: a.testo, fatto: conSpunte ? !!a.fatto : false, svolto: false }));
+}
+function argomentiSvolti(m){
+  return (m.argomenti || []).filter(a => a.svolto && (a.testo || '').trim()).map(a => a.testo.trim().replace(/[.;]+$/, ''));
+}
+
+// ---------- Approfondimenti del modulo (ex Diario degli approfondimenti) ----------
+let approfAperti = new Set(), focusApprof = null;
+function bloccoApprofondimenti(m, cfg){
+  if(!Array.isArray(m.approfondimenti)) m.approfondimenti = [];
+  const det = document.createElement('details');
+  det.className = 'blocco-approf';
+  det.open = approfAperti.has(m.id);
+  det.addEventListener('toggle', ()=>{ if(det.open) approfAperti.add(m.id); else approfAperti.delete(m.id); });
+  const n = m.approfondimenti.length;
+  det.innerHTML = `<summary>Letture, attività e approfondimenti${n ? ' (' + n + ')' : ': nessuno ancora'}</summary>`;
+  m.approfondimenti.slice().sort((a, b) => (a.data || '').localeCompare(b.data || '')).forEach(v => {
+    const r = document.createElement('div');
+    r.className = 'riga-approf';
+    r.innerHTML = `<input type="date" value="${v.data || ''}"><textarea rows="2" placeholder="Titolo e descrizione in un unico blocco"></textarea>
+      <button class="icona-arg elimina-arg" title="Elimina">✕</button>`;
+    const ta = r.querySelector('textarea');
+    ta.value = v.testo || '';
+    ta.dataset.approf = v.id;
+    const adatta = () => { ta.style.height = 'auto'; ta.style.height = (ta.scrollHeight + 2) + 'px'; };
+    requestAnimationFrame(adatta);
+    det.addEventListener('toggle', ()=> requestAnimationFrame(adatta));
+    ta.addEventListener('input', e=>{ v.testo = e.target.value; salvaDati(); adatta(); });
+    r.querySelector('input[type=date]').addEventListener('change', e=>{ v.data = e.target.value; salvaDati(); });
+    r.querySelector('button').addEventListener('click', ()=>{
+      if((v.testo || '').trim() && !confirm('Eliminare questo approfondimento?')) return;
+      m.approfondimenti = m.approfondimenti.filter(x => x.id !== v.id); salvaDati(); cfg.ridisegna();
+    });
+    det.appendChild(r);
+  });
+  const az = document.createElement('div');
+  az.className = 'azioni-argomenti';
+  az.innerHTML = '<button class="btn-arg">+ aggiungi approfondimento</button>';
+  az.querySelector('button').addEventListener('click', ()=>{
+    const nuovo = { id: idCasuale(), data: oggiISO(), testo: '' };
+    m.approfondimenti.push(nuovo);
+    approfAperti.add(m.id); focusApprof = nuovo.id;
+    salvaDati(); cfg.ridisegna();
+  });
+  det.appendChild(az);
+  return det;
 }
 function applicaFocusArgomento(){
   if(!focusArgomento) return;
@@ -1129,19 +1186,26 @@ function bloccoArgomenti(m, cfg){
   det.addEventListener('toggle', ()=>{ if(det.open) argomentiAperti.add(m.id); else argomentiAperti.delete(m.id); });
   const summary = document.createElement('summary');
   const aggiornaConteggio = ()=>{
-    const tot = m.argomenti.length, fatti = m.argomenti.filter(a => a.fatto).length;
-    summary.textContent = tot ? 'Argomenti: ' + fatti + ' su ' + tot + ' ' + cfg.parola : 'Argomenti: nessuno ancora';
+    const tot = m.argomenti.length, fatti = m.argomenti.filter(a => a.fatto).length, svolti = m.argomenti.filter(a => a.svolto).length;
+    summary.textContent = tot ? 'Argomenti (' + tot + '): previsti ' + fatti + ' · svolti ' + svolti : 'Argomenti: nessuno ancora';
   };
   aggiornaConteggio();
   det.appendChild(summary);
 
   const lista = document.createElement('div');
   lista.className = 'lista-argomenti';
+  if(m.argomenti.length){
+    const intest = document.createElement('div');
+    intest.className = 'intest-spunte';
+    intest.innerHTML = '<span title="Previsto (programmazione)">P</span><span class="svolto" title="Svolto (relazione finale)">S</span><span style="width:auto; text-align:left;">previsto · svolto</span>';
+    lista.appendChild(intest);
+  }
   m.argomenti.forEach((a, k)=>{
     const r = document.createElement('div');
     r.className = 'riga-argomento' + (a.fatto ? '' : ' non-fatto');
     r.innerHTML = `
       <input type="checkbox" class="chk-argomento" title="${cfg.titoloSpunta}" ${a.fatto ? 'checked' : ''}>
+      <input type="checkbox" class="chk-svolto" title="Svolto: esce nella relazione finale" ${a.svolto ? 'checked' : ''}>
       <input type="text" class="testo-argomento" placeholder="Scrivi l'argomento">
       <button class="icona-arg" data-az="su" title="Sposta su">↑</button>
       <button class="icona-arg" data-az="giu" title="Sposta giù">↓</button>
@@ -1153,6 +1217,10 @@ function bloccoArgomenti(m, cfg){
     r.querySelector('.chk-argomento').addEventListener('change', e=>{
       a.fatto = e.target.checked;
       r.classList.toggle('non-fatto', !a.fatto);
+      salvaDati(); aggiornaConteggio();
+    });
+    r.querySelector('.chk-svolto').addEventListener('change', e=>{
+      a.svolto = e.target.checked;
       salvaDati(); aggiornaConteggio();
     });
     r.querySelector('[data-az=su]').addEventListener('click', ()=>{
@@ -1171,7 +1239,7 @@ function bloccoArgomenti(m, cfg){
   const azioni = document.createElement('div');
   azioni.className = 'azioni-argomenti';
   azioni.innerHTML = `<button class="btn-arg" data-az="nuovo">+ aggiungi argomento</button>`
-    + (m.argomenti.length ? `<button class="btn-arg" data-az="tutti">spunta tutti</button><button class="btn-arg" data-az="nessuno">togli tutte le spunte</button>` : '');
+    + (m.argomenti.length ? `<button class="btn-arg" data-az="tutti">previsti: tutti</button><button class="btn-arg" data-az="nessuno">previsti: nessuno</button><button class="btn-arg" data-az="svoltiTutti">svolti: tutti i previsti</button><button class="btn-arg" data-az="svoltiNessuno">svolti: nessuno</button>` : '');
   azioni.querySelector('[data-az=nuovo]').addEventListener('click', ()=>{
     const nuovo = { id: idCasuale(), testo: '', fatto: true };
     m.argomenti.push(nuovo);
@@ -1181,6 +1249,10 @@ function bloccoArgomenti(m, cfg){
   });
   const btnTutti = azioni.querySelector('[data-az=tutti]');
   if(btnTutti) btnTutti.addEventListener('click', ()=>{ m.argomenti.forEach(a => a.fatto = true); salvaDati(); cfg.ridisegna(); });
+  const btnST = azioni.querySelector('[data-az=svoltiTutti]');
+  if(btnST) btnST.addEventListener('click', ()=>{ m.argomenti.forEach(a => { if(a.fatto) a.svolto = true; }); salvaDati(); cfg.ridisegna(); });
+  const btnSN = azioni.querySelector('[data-az=svoltiNessuno]');
+  if(btnSN) btnSN.addEventListener('click', ()=>{ m.argomenti.forEach(a => a.svolto = false); salvaDati(); cfg.ridisegna(); });
   const btnNessuno = azioni.querySelector('[data-az=nessuno]');
   if(btnNessuno) btnNessuno.addEventListener('click', ()=>{ m.argomenti.forEach(a => a.fatto = false); salvaDati(); cfg.ridisegna(); });
   det.appendChild(azioni);
@@ -1481,6 +1553,7 @@ function renderMain(){
         <span>Argomenti di tutti i moduli:</span>
         <button class="btn-precompila" id="btn-spunta-tutti-arg">Spunta tutti gli argomenti di tutti i moduli</button>
         <button class="btn-precompila" id="btn-togli-tutti-arg">Togli tutte le spunte</button>
+        <button class="btn-precompila" id="btn-svolti-conclusi" title="Per i moduli la cui spiegazione è già finita: segna svolti gli argomenti previsti">Segna svolti i previsti dei moduli conclusi</button>
       </div>` : ''}
       <table class="tabella-moduli">
         <thead><tr>
@@ -1606,6 +1679,20 @@ function renderMain(){
   };
   const bSpTutti = document.getElementById('btn-spunta-tutti-arg');
   if(bSpTutti) bSpTutti.addEventListener('click', ()=> spuntaTutti(true));
+  const bSvC = document.getElementById('btn-svolti-conclusi');
+  if(bSvC) bSvC.addEventListener('click', ()=>{
+    const calc = calcolaPianificazione(piano), oggi = oggiISO();
+    const conclusi = calc.righe.filter(r => r.dataFine && r.dataFine < oggi).map(r => r.modulo);
+    if(!conclusi.length){ alert('Nessun modulo risulta ancora concluso.'); return; }
+    const daSegnare = [];
+    conclusi.forEach(m => (m.argomenti || []).forEach(a => { if(a.fatto && !a.svolto) daSegnare.push(a); }));
+    const n = daSegnare.length;
+    if(!n){ alert('Nei moduli conclusi gli argomenti previsti sono già tutti segnati come svolti.'); return; }
+    if(!confirm('Segnare come svolti ' + n + ' argomenti previsti in ' + conclusi.length + ' moduli già conclusi?\n\n' + conclusi.map(m => '• ' + m.nome).join('\n'))) return;
+    daSegnare.forEach(a => a.svolto = true);
+    salvaDati(); render();
+    mostraNotaBackup(n + ' argomenti segnati come svolti.', 'ok');
+  });
   const bTogTutti = document.getElementById('btn-togli-tutti-arg');
   if(bTogTutti) bTogTutti.addEventListener('click', ()=> spuntaTutti(false));
 
@@ -2319,6 +2406,165 @@ function renderCalendarioGsl(){
   });
 }
 
+// ---------- Importazione dal Diario degli approfondimenti ----------
+function normalizzaNome(t){
+  return String(t || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[«»"“”'’`]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
+}
+function pianoPerClasseDiario(c){
+  const nome = (c.nome || '') + ' ' + (c.annoCorso || '') + (c.sezione || '');
+  const mCl = nome.toUpperCase().match(/\b([1-5])\s*([A-Z])\b/);
+  const materia = /filosof/i.test(nome) ? 'Filosofia' : /stori/i.test(nome) ? 'Storia' : (c.materia || '');
+  if(!mCl || !materia) return null;
+  return stato.piani.find(p => classeDi(p) === mCl[1] + mCl[2] && (p.materia || '').toLowerCase() === materia.toLowerCase()) || null;
+}
+function importaDiario(dati){
+  const classi = (dati.stato && dati.stato.classi) || dati.classi || [];
+  const esito = { approf: 0, svolti: 0, aggiunti: 0, doppioni: 0, classiNo: [], moduliNo: [] };
+  classi.forEach(c => {
+    const conDati = (c.moduli || []).some(m => (m.voci || []).length || (m.argomenti || []).length);
+    if(!conDati) return;
+    const piano = pianoPerClasseDiario(c);
+    if(!piano){ esito.classiNo.push(c.nome); return; }
+    (c.moduli || []).forEach(dm => {
+      const nd = normalizzaNome(dm.nome);
+      const mod = piano.moduli.find(m => normalizzaNome(m.nome) === nd)
+        || piano.moduli.find(m => { const nm = normalizzaNome(m.nome); return nm && nd && (nm.startsWith(nd) || nd.startsWith(nm)); });
+      const haDati = (dm.voci || []).length || (dm.argomenti || []).some(a => a.fatto);
+      if(!mod){ if(haDati) esito.moduliNo.push(piano.nome + ': ' + dm.nome); return; }
+      if(!Array.isArray(mod.argomenti)) mod.argomenti = [];
+      if(!Array.isArray(mod.approfondimenti)) mod.approfondimenti = [];
+      (dm.argomenti || []).forEach(da => {
+        if(!da.fatto || !(da.testo || '').trim()) return;
+        const na = normalizzaNome(da.testo);
+        let a = mod.argomenti.find(x => normalizzaNome(x.testo) === na);
+        if(!a){ a = { id: idCasuale(), testo: da.testo.trim(), fatto: true, svolto: false }; mod.argomenti.push(a); esito.aggiunti++; }
+        if(!a.svolto){ a.svolto = true; esito.svolti++; }
+      });
+      (dm.voci || []).forEach(v => {
+        if(!(v.testo || '').trim()) return;
+        const doppio = mod.approfondimenti.some(x => (x.data || '') === (v.data || '') && (x.testo || '').trim() === v.testo.trim());
+        if(doppio){ esito.doppioni++; return; }
+        mod.approfondimenti.push({ id: idCasuale(), data: v.data || '', testo: v.testo.trim() });
+        esito.approf++;
+      });
+    });
+  });
+  return esito;
+}
+
+// ---------- Relazione finale / programma svolto ----------
+function datiRelazione(piano, calcolo){
+  const out = [];
+  piano.moduli.forEach(m => {
+    const args = argomentiSvolti(m);
+    const voci = (m.approfondimenti || []).filter(v => (v.testo || '').trim()).slice().sort((a, b) => (a.data || '').localeCompare(b.data || ''));
+    if(args.length || voci.length) out.push({ nome: m.nome, argomenti: args, voci: voci.map(v => ({ data: v.data || '', testo: v.testo.trim() })) });
+  });
+  const civica = gruppiCivica(calcolo).filter(g => g.dal <= oggiISO()).map(g => ({ titolo: g.titolo, dal: g.dal, al: g.al, n: g.n }));
+  return { moduli: out, civica };
+}
+function dataEstesa(iso){
+  if(!iso) return '';
+  const d = parseISO(iso);
+  return d.getDate() + ' ' + MESI_LABEL[d.getMonth()] + ' ' + d.getFullYear();
+}
+function rtfRelazione(piano, dati, conDate){
+  const anno = piano.dataInizio ? parseISO(piano.dataInizio).getFullYear() : '';
+  let rtf = '{\\rtf1\\ansi\\ansicpg1252\\deff0\\deflang1040{\\fonttbl{\\f0\\fswiss\\fcharset0 Calibri;}}\n\\f0\\fs22\n';
+  rtf += '{\\pard\\b\\fs32 ' + rtfEscape(piano.nome) + '\\par}\n';
+  rtf += '{\\pard\\fs20\\sa240 Programma svolto: argomenti, letture, attivit\\u224? e approfondimenti' + (anno ? ' \\emdash  a.s. ' + anno + '/' + (anno + 1) : '') + '\\par}\n';
+  dati.moduli.forEach((m, i) => {
+    rtf += '{\\pard\\b\\fs26\\sb200\\sa80 ' + (i + 1) + '. ' + rtfEscape(m.nome) + '\\par}\n';
+    if(m.argomenti.length) rtf += '{\\pard\\sa80 {\\i Argomenti:} ' + rtfEscape(m.argomenti.join('; ')) + '.\\par}\n';
+    if(m.voci.length){
+      rtf += '{\\pard\\sa40 {\\i Letture, attivit\\u224? e approfondimenti:}\\par}\n';
+      m.voci.forEach(v => {
+        rtf += '{\\pard\\fi-280\\li280\\sa60 \\bullet\\tab ' + (conDate && v.data ? rtfEscape(dataEstesa(v.data)) + ' \\endash  ' : '') + rtfEscape(v.testo) + '\\par}\n';
+      });
+    }
+  });
+  dati.civica.forEach(g => {
+    rtf += '{\\pard\\b\\fs26\\sb200\\sa80 Educazione civica' + (g.titolo ? ': ' + rtfEscape('«' + g.titolo + '»') : '') + '\\par}\n';
+    rtf += '{\\pard\\sa80 ' + rtfEscape(g.n + ' lezioni di ' + (piano.materia || '').toLowerCase() + ', dal ' + dataEstesa(g.dal) + ' al ' + dataEstesa(g.al) + '.') + '\\par}\n';
+  });
+  return rtf + '}';
+}
+function testoRelazione(piano, dati, conDate){
+  let t = piano.nome.toUpperCase() + '\nProgramma svolto: argomenti, letture, attività e approfondimenti\n\n';
+  dati.moduli.forEach((m, i) => {
+    t += (i + 1) + '. ' + m.nome + '\n';
+    if(m.argomenti.length) t += '   Argomenti: ' + m.argomenti.join('; ') + '.\n';
+    if(m.voci.length){
+      t += '   Letture, attività e approfondimenti:\n';
+      m.voci.forEach(v => t += '   • ' + (conDate && v.data ? dataEstesa(v.data) + ' – ' : '') + v.testo + '\n');
+    }
+    t += '\n';
+  });
+  dati.civica.forEach(g => t += 'Educazione civica' + (g.titolo ? ': «' + g.titolo + '»' : '') + ' – ' + g.n + ' lezioni, dal ' + dataEstesa(g.dal) + ' al ' + dataEstesa(g.al) + '.\n');
+  return t;
+}
+function finestraRelazione(piano, calcolo){
+  const dati = datiRelazione(piano, calcolo);
+  if(!dati.moduli.length && !dati.civica.length){
+    alert('Non c\'è ancora niente di svolto: segna gli argomenti svolti (seconda spunta) o aggiungi approfondimenti nei moduli.'); return;
+  }
+  const pacchetto = {
+    nome: piano.nome, dati,
+    rtf: { con: rtfRelazione(piano, dati, true), senza: rtfRelazione(piano, dati, false) },
+    txt: { con: testoRelazione(piano, dati, true), senza: testoRelazione(piano, dati, false) },
+    file: 'Relazione_' + piano.nome.replace(/[^A-Za-z0-9]+/g, '_') + '.rtf',
+    date: dati.moduli.map(m => m.voci.map(v => v.data ? dataEstesa(v.data) : ''))
+  };
+  const js = JSON.stringify(pacchetto).replace(/</g, '\\u003c');
+  const w = window.open('', '_blank');
+  if(!w){ alert('Il browser ha bloccato la finestra. Consenti i popup per questo sito e riprova.'); return; }
+  w.document.write(`<!DOCTYPE html><html lang="it"><head><meta charset="UTF-8"><title>Programma svolto — ${escapeHtml(piano.nome)}</title><style>
+    body{ font-family:Georgia,'Times New Roman',serif; color:#33291f; background:#fffaf2; margin:28px; line-height:1.5; max-width:900px; }
+    h1{ font-size:21px; color:#A84A6E; margin:0 0 2px; } .sotto{ font-size:12px; color:#6b5d4d; margin-bottom:16px; }
+    h2{ font-size:15px; margin:18px 0 4px; color:#2c6b5f; } .arg{ font-size:13.5px; margin:0 0 6px; } .lab{ font-style:italic; }
+    ul{ margin:2px 0 8px 18px; padding:0; font-size:13.5px; } li{ margin-bottom:4px; }
+    .barra{ display:flex; gap:12px; align-items:center; flex-wrap:wrap; font-size:12px; color:#6b5d4d; margin-bottom:16px; }
+    button{ font-family:inherit; font-size:12px; padding:6px 14px; border:1px solid #A84A6E; background:#fff; color:#A84A6E; border-radius:6px; cursor:pointer; }
+    button.ok{ background:#A84A6E; color:#fff; }
+    @media print{ .barra{ display:none; } body{ background:#fff; margin:0; } }
+  </style></head><body>
+    <h1>${escapeHtml(piano.nome)}</h1><div class="sotto">Programma svolto: argomenti, letture, attività e approfondimenti</div>
+    <div class="barra">
+      <label><input type="checkbox" id="date" checked onchange="disegna()"> con le date degli approfondimenti</label>
+      <button onclick="scarica()">⤓ Scarica per Word</button>
+      <button onclick="copia(this)">Copia il testo</button>
+      <button onclick="window.print()">Stampa o PDF</button>
+    </div>
+    <div id="corpo"></div>
+    <script>
+      const P = ${js};
+      function esc(t){ return String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+      function conDate(){ return document.getElementById('date').checked; }
+      function disegna(){
+        let h = '';
+        P.dati.moduli.forEach((m, i) => {
+          h += '<h2>' + (i+1) + '. ' + esc(m.nome) + '</h2>';
+          if(m.argomenti.length) h += '<p class="arg"><span class="lab">Argomenti:</span> ' + esc(m.argomenti.join('; ')) + '.</p>';
+          if(m.voci.length) h += '<p class="arg"><span class="lab">Letture, attività e approfondimenti:</span></p><ul>' + m.voci.map((v, j) => '<li>' + (conDate() && P.date[i][j] ? esc(P.date[i][j]) + ' – ' : '') + esc(v.testo) + '</li>').join('') + '</ul>';
+        });
+        P.dati.civica.forEach(g => { h += '<h2>Educazione civica' + (g.titolo ? ': «' + esc(g.titolo) + '»' : '') + '</h2><p class="arg">' + g.n + ' lezioni.</p>'; });
+        document.getElementById('corpo').innerHTML = h;
+      }
+      function scarica(){
+        const blob = new Blob([P.rtf[conDate() ? 'con' : 'senza']], { type: 'application/rtf' });
+        const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = P.file;
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      }
+      function copia(btn){
+        const t = P.txt[conDate() ? 'con' : 'senza'];
+        const ok = () => { btn.textContent = 'Copiato ✓'; btn.classList.add('ok'); setTimeout(() => { btn.textContent = 'Copia il testo'; btn.classList.remove('ok'); }, 1500); };
+        if(navigator.clipboard) navigator.clipboard.writeText(t).then(ok, () => alert('Copia non riuscita.'));
+      }
+      disegna();
+    <\/script></body></html>`);
+  w.document.close();
+}
+
 function finestraElencoGsl(){
   const voci = (stato.giorniSenzaLezione || []).slice().sort((a, b) => a.dal < b.dal ? -1 : 1);
   if(!voci.length){ alert('Il registro è vuoto.'); return; }
@@ -2585,6 +2831,9 @@ function renderTabellaModuli(piano){
       titoloSpunta: 'Spunta gli argomenti che fai: solo questi escono nei report',
       ridisegna: ()=>{ renderTabellaModuli(piano); applicaFocusArgomento(); }
     }));
+    tdA.appendChild(bloccoApprofondimenti(m, {
+      ridisegna: ()=>{ renderTabellaModuli(piano); if(focusApprof){ const t = document.querySelector('textarea[data-approf="' + focusApprof + '"]'); if(t) t.focus(); focusApprof = null; } }
+    }));
     trA.appendChild(tdA);
     corpo.appendChild(trA);
     // sotto-riga: verifiche del modulo
@@ -2845,6 +3094,7 @@ function renderPannelloDiagramma(piano, calcolo){
       <button class="btn-aggiungi" id="btn-esporta-word">⤓ esporta programmazione (RTF — Word/Pages)</button>
       <button class="btn-aggiungi" id="btn-report-grafico">⤓ report con grafico (per gli studenti)</button>
       <button class="btn-aggiungi" id="btn-contenuti-mese">⤓ contenuti per mese (modello della scuola)</button>
+      <button class="btn-aggiungi" id="btn-relazione" style="border-color:#A84A6E; color:#A84A6E;">⤓ relazione finale (programma svolto)</button>
     </div>
     ${sfora>0
       ? `<div class="banner-sforo">⚠︎ Stai sforando di <b>${sfora}</b> ${sfora===1?'lezione':'lezioni'}: la programmazione richiede <b>${totServe}</b> lezioni (${totSpieg} di spiegazione + ${totVerif+sfora} di verifica) ma nel periodo ne hai solo <b>${calcolo.lezioniTotali}</b>.</div>`
@@ -2867,6 +3117,7 @@ function renderPannelloDiagramma(piano, calcolo){
   document.getElementById('btn-esporta-word').addEventListener('click', ()=> esportaCronoProgrammaWord(piano, calcolo));
   document.getElementById('btn-report-grafico').addEventListener('click', ()=> reportConGrafico(piano, calcolo));
   document.getElementById('btn-contenuti-mese').addEventListener('click', ()=> finestraContenutiPerMese(piano, calcolo));
+  document.getElementById('btn-relazione').addEventListener('click', ()=> finestraRelazione(piano, calcolo));
   renderGantt(piano, calcolo);
 }
 
@@ -3064,6 +3315,26 @@ function importaBackup(file){
 }
 
 document.getElementById('btn-esporta-backup').addEventListener('click', esportaBackup);
+document.getElementById('btn-importa-diario').addEventListener('click', ()=> document.getElementById('input-file-diario').click());
+document.getElementById('input-file-diario').addEventListener('change', e=>{
+  const f = e.target.files[0]; if(!f) return;
+  const r = new FileReader();
+  r.onload = () => {
+    try{
+      const dati = JSON.parse(r.result);
+      if(!(dati.stato && dati.stato.classi) && !dati.classi){ alert('Questo non sembra un backup del Diario degli approfondimenti.'); return; }
+      const es = importaDiario(dati);
+      salvaDati(); render();
+      let msg = 'Importazione dal Diario completata.\n\n• ' + es.approf + ' approfondimenti aggiunti' + (es.doppioni ? ' (' + es.doppioni + ' già presenti, saltati)' : '') +
+        '\n• ' + es.svolti + ' argomenti segnati come svolti' + (es.aggiunti ? '\n• ' + es.aggiunti + ' argomenti che mancavano aggiunti ai moduli' : '');
+      if(es.classiNo.length) msg += '\n\nClassi del Diario senza un piano corrispondente:\n' + es.classiNo.map(x => '• ' + x).join('\n');
+      if(es.moduliNo.length) msg += '\n\nModuli non trovati (dati non importati):\n' + es.moduliNo.map(x => '• ' + x).join('\n');
+      alert(msg);
+    }catch(err){ alert('Il file non è leggibile: ' + err.message); }
+    e.target.value = '';
+  };
+  r.readAsText(f);
+});
 document.getElementById('btn-importa-backup').addEventListener('click', ()=> document.getElementById('input-file-backup').click());
 document.getElementById('input-file-backup').addEventListener('change', e=>{
   const file = e.target.files && e.target.files[0];
