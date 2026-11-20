@@ -615,7 +615,7 @@
 <div class="app">
   <div class="sidebar" id="sidebar">
     <h1>Pianificatore</h1>
-    <div class="sottotitolo">Moduli didattici &middot; a cascata &middot; v. 2.13</div>
+    <div class="sottotitolo">Moduli didattici &middot; a cascata &middot; v. 2.14</div>
     <div id="lista-tab"></div>
     <button class="btn-nuovo-piano" id="btn-nuovo-piano">+ nuovo piano (classe/materia)</button>
     <div id="sezione-cestino"></div>
@@ -2398,7 +2398,7 @@ function renderRiepilogoVerifiche(piano, calcolo){
       <td style="white-space:nowrap;">${statoTxt}</td></tr>`;
   };
   cont.innerHTML = `<table class="tab-verifiche"><thead><tr><th>Quando</th><th>Tipo</th><th>Argomenti (moduli)</th><th>Lezioni</th><th>Stato</th></tr></thead>
-    <tbody>${future.map(riga).join('')}${passate.map(riga).join('')}</tbody></table>`;
+    <tbody>${voci.slice().sort((a, b) => (a.prima || '9999') < (b.prima || '9999') ? -1 : (a.prima || '9999') > (b.prima || '9999') ? 1 : 0).map(riga).join('')}</tbody></table>`;
 }
 
 function renderCivica(piano){
