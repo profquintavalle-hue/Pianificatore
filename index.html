@@ -104,6 +104,7 @@
   .btn-piccolo.rosso{ color:var(--ruggine); }
   .btn-piccolo.rosso:hover{ border-color:var(--ruggine); }
   .btn-piccolo:disabled{ opacity:0.4; cursor:default; }
+  .sezione-backup.in-alto{ margin-top:0; padding-top:0; padding-bottom:14px; margin-bottom:14px; border-top:none; border-bottom:1px solid var(--bordo); }
   .sezione-backup{
     margin-top:auto;
     padding-top:18px;
@@ -615,17 +616,17 @@
 <div class="app">
   <div class="sidebar" id="sidebar">
     <h1>Pianificatore</h1>
-    <div class="sottotitolo">Moduli didattici &middot; a cascata &middot; v. 2.14</div>
-    <div id="lista-tab"></div>
-    <button class="btn-nuovo-piano" id="btn-nuovo-piano">+ nuovo piano (classe/materia)</button>
-    <div id="sezione-cestino"></div>
-    <div class="sezione-backup">
+    <div class="sottotitolo">Moduli didattici &middot; a cascata &middot; v. 2.15</div>
+    <div class="sezione-backup in-alto">
       <div class="titolo-backup">Backup</div>
       <button class="btn-backup" id="btn-esporta-backup">⤓ Salva backup su file</button>
       <button class="btn-backup" id="btn-importa-backup">⤒ Ripristina da file</button>
       <input type="file" id="input-file-backup" accept=".json,application/json" style="display:none">
       <div class="nota-backup" id="nota-backup">Consiglio: salva il file nel tuo Google Drive dopo modifiche importanti.</div>
     </div>
+    <div id="lista-tab"></div>
+    <button class="btn-nuovo-piano" id="btn-nuovo-piano">+ nuovo piano (classe/materia)</button>
+    <div id="sezione-cestino"></div>
   </div>
   <div class="main" id="main"></div>
 </div>
