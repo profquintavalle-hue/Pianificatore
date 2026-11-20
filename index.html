@@ -501,6 +501,22 @@
   .riga-gsl .sotto-gsl{ font-size:0.72rem; color:var(--inchiostro-tenue); }
   .riga-gsl.passata{ opacity:0.75; }
   .tipo-gsl{ display:inline-block; font-size:0.68rem; padding:1px 7px; border-radius:10px; background:rgba(179,73,42,0.12); color:var(--ruggine); margin-right:6px; }
+  .schede-gsl{ display:flex; gap:6px; margin-top:12px; }
+  .schede-gsl button{ font-family:inherit; font-size:0.8rem; padding:5px 14px; border:1px solid var(--bordo); background:#fff; border-radius:14px; cursor:pointer; color:var(--inchiostro-tenue); }
+  .schede-gsl button.attiva{ background:var(--teal); border-color:var(--teal); color:#fff; }
+  .cal-gsl{ margin-top:10px; }
+  .cal-gsl .testa{ display:flex; align-items:center; gap:8px; margin-bottom:8px; }
+  .cal-gsl .testa .titolo{ font-weight:700; color:var(--teal); min-width:150px; text-align:center; text-transform:capitalize; }
+  .cal-gsl .testa button{ font-family:inherit; font-size:0.8rem; padding:3px 10px; border:1px solid var(--bordo); background:#fff; border-radius:6px; cursor:pointer; }
+  .griglia-gsl{ display:grid; grid-template-columns:repeat(6, 1fr); gap:3px; }
+  .griglia-gsl .intest{ font-size:0.7rem; text-transform:uppercase; color:var(--inchiostro-tenue); text-align:center; padding:2px; }
+  .griglia-gsl .gc{ min-height:68px; background:#fff; border:1px solid var(--bordo); border-radius:6px; padding:3px 4px; cursor:pointer; overflow:hidden; }
+  .griglia-gsl .gc:hover{ border-color:var(--teal); }
+  .griglia-gsl .gc.fuori{ background:transparent; border-style:dashed; opacity:0.45; }
+  .griglia-gsl .gc.oggi{ box-shadow:inset 0 0 0 2px var(--teal); }
+  .griglia-gsl .num{ font-size:0.72rem; color:var(--inchiostro-tenue); }
+  .griglia-gsl .etic{ display:block; font-size:0.66rem; line-height:1.2; padding:2px 4px; border-radius:4px; margin-top:2px; color:#3b2a1a; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .dettaglio-gsl{ margin-top:10px; padding:10px 12px; background:#fff; border:1px solid var(--bordo); border-radius:8px; font-size:0.82rem; }
   .dettagli-civica{ margin:-6px 0 14px 2px; font-size:0.82rem; }
   .dettagli-civica summary{ cursor:pointer; color:#A84A6E; font-weight:600; margin-bottom:6px; }
   .dettagli-civica label{ display:block; font-size:0.75rem; color:var(--inchiostro-tenue); margin:8px 0 3px; }
@@ -587,7 +603,7 @@
 <div class="app">
   <div class="sidebar" id="sidebar">
     <h1>Pianificatore</h1>
-    <div class="sottotitolo">Moduli didattici &middot; a cascata &middot; v. 2.11</div>
+    <div class="sottotitolo">Moduli didattici &middot; a cascata &middot; v. 2.12</div>
     <div id="lista-tab"></div>
     <button class="btn-nuovo-piano" id="btn-nuovo-piano">+ nuovo piano (classe/materia)</button>
     <div id="sezione-cestino"></div>
@@ -1367,6 +1383,11 @@ function renderMain(){
         <button class="btn-precompila" id="btn-gsl-importa">Carica voci da file</button>
         <input type="file" id="input-gsl" accept=".json,application/json" style="display:none">
       </div>
+      <div class="schede-gsl">
+        <button id="scheda-gsl-cal">Calendario</button>
+        <button id="scheda-gsl-elenco">Elenco</button>
+      </div>
+      <div class="cal-gsl" id="cal-gsl"></div>
       <div class="lista-gsl" id="lista-gsl"></div>
     </details>
 
@@ -2166,6 +2187,15 @@ function renderRegistroGsl(){
     salvaDati(); render();
   }));
 
+  const vista = stato.vistaGsl || 'calendario';
+  document.getElementById('scheda-gsl-cal').classList.toggle('attiva', vista === 'calendario');
+  document.getElementById('scheda-gsl-elenco').classList.toggle('attiva', vista === 'elenco');
+  document.getElementById('cal-gsl').style.display = vista === 'calendario' ? '' : 'none';
+  lista.style.display = vista === 'elenco' ? '' : 'none';
+  document.getElementById('scheda-gsl-cal').addEventListener('click', ()=>{ stato.vistaGsl = 'calendario'; salvaDati(); render(); });
+  document.getElementById('scheda-gsl-elenco').addEventListener('click', ()=>{ stato.vistaGsl = 'elenco'; salvaDati(); render(); });
+  if(vista === 'calendario') renderCalendarioGsl();
+
   document.getElementById('btn-gsl-aggiungi').addEventListener('click', ()=>{
     const v = id => document.getElementById(id).value.trim();
     const dal = v('gsl-dal'); let al = v('gsl-al');
@@ -2206,6 +2236,67 @@ function renderRegistroGsl(){
       inp.value = '';
     };
     r.readAsText(f);
+  });
+}
+
+// ---------- Vista calendario del registro ----------
+const COLORI_GSL = { 'Malattia':'#f4c7c0', 'Permesso giornaliero':'#f8d7b0', 'Permesso orario':'#f6e6a6', 'Sciopero':'#dccbe8',
+  'Assemblea sindacale':'#f3cde0', "Assemblea d'istituto":'#f6e6a6', 'Chiusura / festività':'#cfe5c8', 'Uscita didattica':'#c9dcef', 'Altro':'#e3d6c3' };
+let meseGsl = null, dettaglioGslId = null;
+function renderCalendarioGsl(){
+  const cont = document.getElementById('cal-gsl');
+  if(!cont) return;
+  if(!meseGsl){ const o = new Date(); meseGsl = new Date(o.getFullYear(), o.getMonth(), 1); }
+  const anno = meseGsl.getFullYear(), mese = meseGsl.getMonth();
+  const primo = new Date(anno, mese, 1);
+  const inizio = new Date(primo); inizio.setDate(1 - giornoSettimanaLunBase(primo));
+  const ultimo = new Date(anno, mese + 1, 0);
+  const oggi = oggiISO();
+  let celle = '';
+  for(let d = new Date(inizio); d <= ultimo || giornoSettimanaLunBase(d) !== 0; d.setDate(d.getDate()+1)){
+    if(giornoSettimanaLunBase(d) === 6) continue; // domenica
+    const iso = toISO(d);
+    const voci = (stato.giorniSenzaLezione || []).filter(g => iso >= g.dal && iso <= (g.al || g.dal));
+    celle += `<div class="gc${d.getMonth() !== mese ? ' fuori' : ''}${iso === oggi ? ' oggi' : ''}" data-iso="${iso}">
+      <div class="num">${d.getDate()}</div>
+      ${voci.map(g => `<span class="etic" data-gsl="${g.id}" style="background:${COLORI_GSL[g.tipo] || '#e3d6c3'}" title="${escapeHtml(g.tipo + (g.descrizione && g.descrizione !== g.tipo ? ': ' + g.descrizione : ''))}">${escapeHtml(g.descrizione && g.descrizione !== g.tipo ? g.descrizione : g.tipo)}</span>`).join('')}
+    </div>`;
+  }
+  const det = dettaglioGslId ? stato.giorniSenzaLezione.find(g => g.id === dettaglioGslId) : null;
+  let dettaglio = '';
+  if(det){
+    const perse = lezioniPerseGsl(det);
+    const classi = classiDisponibili();
+    const tutte = !det.classi || !det.classi.length || det.classi.length === classi.length;
+    dettaglio = `<div class="dettaglio-gsl"><b>${testoDateGsl(det)}</b> — <span class="tipo-gsl">${escapeHtml(det.tipo)}</span>${escapeHtml(det.descrizione || '')}${det.ore ? ' (' + det.ore + ' h)' : ''}<br>
+      ${escapeHtml(det.chi || '')} · ${tutte ? 'tutte le classi' : 'classi ' + det.classi.join(', ')} ·
+      ${Object.keys(perse).length ? 'lezioni tolte: ' + Object.entries(perse).map(([c, n]) => c + ' ' + n).join(', ') : 'nessuna lezione quel giorno'}
+      ${det.protocollo ? '<br>' + escapeHtml(det.protocollo) : ''}${det.note ? '<br>' + escapeHtml(det.note) : ''}
+      ${det.link ? `<br><a href="${escapeHtml(det.link)}" target="_blank" rel="noopener">apri il documento</a>` : ''}
+      <div style="margin-top:6px;"><button class="btn-piccolo rosso" data-gsl-del="${det.id}">Rimuovi dal registro</button> <button class="btn-piccolo" id="chiudi-det-gsl">Chiudi</button></div></div>`;
+  }
+  cont.innerHTML = `<div class="testa">
+      <button id="gsl-prec">◀</button><span class="titolo">${MESI_LABEL[mese]} ${anno}</span><button id="gsl-succ">▶</button>
+      <button id="gsl-oggi">oggi</button>
+      <span class="sotto-gsl" style="margin-left:8px;">Clic su un giorno: data pronta nel modulo sopra · clic su un'etichetta: dettagli</span>
+    </div>
+    <div class="griglia-gsl">${['Lun','Mar','Mer','Gio','Ven','Sab'].map(g => `<div class="intest">${g}</div>`).join('')}${celle}</div>${dettaglio}`;
+  cont.querySelector('#gsl-prec').addEventListener('click', ()=>{ meseGsl = new Date(anno, mese - 1, 1); renderCalendarioGsl(); });
+  cont.querySelector('#gsl-succ').addEventListener('click', ()=>{ meseGsl = new Date(anno, mese + 1, 1); renderCalendarioGsl(); });
+  cont.querySelector('#gsl-oggi').addEventListener('click', ()=>{ meseGsl = null; renderCalendarioGsl(); });
+  cont.querySelectorAll('.gc').forEach(c => c.addEventListener('click', ev => {
+    const et = ev.target.closest('[data-gsl]');
+    if(et){ dettaglioGslId = et.dataset.gsl; renderCalendarioGsl(); return; }
+    const campo = document.getElementById('gsl-dal');
+    if(campo){ campo.value = c.dataset.iso; document.getElementById('gsl-al').value = ''; campo.focus(); campo.scrollIntoView({ behavior:'smooth', block:'center' }); }
+  }));
+  const chiudi = cont.querySelector('#chiudi-det-gsl');
+  if(chiudi) chiudi.addEventListener('click', ()=>{ dettaglioGslId = null; renderCalendarioGsl(); });
+  const del = cont.querySelector('[data-gsl-del]');
+  if(del) del.addEventListener('click', ()=>{
+    if(!confirm('Rimuovere dal registro: ' + testoDateGsl(det) + ' – ' + det.tipo + '?\n\nLe lezioni di quel giorno torneranno nei piani.')) return;
+    stato.giorniSenzaLezione = stato.giorniSenzaLezione.filter(x => x.id !== det.id);
+    dettaglioGslId = null; salvaDati(); render();
   });
 }
 
